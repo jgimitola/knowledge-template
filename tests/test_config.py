@@ -108,3 +108,18 @@ def test_unknown_publish_target_is_rejected(tmp_path):
     with pytest.raises(ConfigError) as exc:
         load_config(write(tmp_path, text))
     assert "carrier-pigeon" in str(exc.value)
+
+
+def test_dynamic_segment_without_an_ellipsis_is_rejected(tmp_path):
+    text = MINIMAL + '\n[dependencies]\ndynamic_segment = "{}"\n'
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, text))
+    assert "dependencies.dynamic_segment" in str(exc.value)
+    assert "{}" in str(exc.value)
+
+
+@pytest.mark.parametrize("segment", ["<...>", "[...]"])
+def test_dynamic_segment_alternative_delimiters_are_accepted(tmp_path, segment):
+    text = MINIMAL + f'\n[dependencies]\ndynamic_segment = "{segment}"\n'
+    config = load_config(write(tmp_path, text))
+    assert config.dependencies.dynamic_segment == segment

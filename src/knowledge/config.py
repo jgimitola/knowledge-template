@@ -140,12 +140,30 @@ def _publish(data: dict) -> Publish:
     )
 
 
+def _dependencies(data: dict) -> Dependencies:
+    table = data.get("dependencies", {})
+    dynamic_segment = _clean(table.get("dynamic_segment")) or "{...}"
+    if "..." not in dynamic_segment:
+        raise ConfigError(
+            f"knowledge.toml: dependencies.dynamic_segment is {dynamic_segment!r};"
+            " it must contain '...' to mark where the segment name goes (e.g. '{...}', '<...>')"
+        )
+    return Dependencies(
+        route_property=_clean(table.get("route_property")),
+        endpoint_property=_clean(table.get("endpoint_property")),
+        route_glob=_clean(table.get("route_glob")),
+        endpoint_glob=_clean(table.get("endpoint_glob")),
+        absorbed_prefixes=tuple(table.get("absorbed_prefixes", ())),
+        dynamic_segment=dynamic_segment,
+        dynamic_replacement=_clean(table.get("dynamic_replacement")) or "*",
+    )
+
+
 def load_config(root: Path) -> Config:
     with (root / "knowledge.toml").open("rb") as handle:
         data = tomllib.load(handle)
 
     code_repo = _clean(data.get("repo", {}).get("code_repo"))
-    deps = data.get("dependencies", {})
 
     return Config(
         project_name=_clean(data.get("project", {}).get("name")),
@@ -155,15 +173,7 @@ def load_config(root: Path) -> Config:
             for row in data.get("ask", ())
         ),
         code_repo=(root / code_repo).resolve() if code_repo else None,
-        dependencies=Dependencies(
-            route_property=_clean(deps.get("route_property")),
-            endpoint_property=_clean(deps.get("endpoint_property")),
-            route_glob=_clean(deps.get("route_glob")),
-            endpoint_glob=_clean(deps.get("endpoint_glob")),
-            absorbed_prefixes=tuple(deps.get("absorbed_prefixes", ())),
-            dynamic_segment=_clean(deps.get("dynamic_segment")) or "{...}",
-            dynamic_replacement=_clean(deps.get("dynamic_replacement")) or "*",
-        ),
+        dependencies=_dependencies(data),
         publish=_publish(data),
         unconfigured=bool(data.get("template", {}).get("unconfigured", False)),
     )
