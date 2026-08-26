@@ -140,6 +140,48 @@ def _rewrite_vocabulary_keys(text: str, values: dict[str, str]) -> str:
     return text
 
 
+# A Turtle span a comment-boundary search or the bare-prefix rewrite below must not look
+# inside: a "..." string literal, or a <...> IRI. Both can contain a literal '#' or the
+# prefix text without either meaning what it would in code — a namespace IRI conventionally
+# ends in '#' (<https://acme.test/ontology#>), and a hand-authored rdfs:comment/rdfs:label
+# routinely uses the prefix as English shorthand ("write ex: before every term"). Single
+# double-quoted strings and single-bracketed IRIs only: the seed ontology never uses
+# triple-quoted string literals, an escaped '"' inside one, or a nested '<'/'>' inside an
+# IRI, so this one-pass regex does not need to handle those.
+PROTECTED_SPAN = re.compile(r'"(?:\\.|[^"\\])*"|<[^<>]*>')
+
+
+def _comment_start(line: str) -> int:
+    """Index of the first '#' in `line` that actually starts a Turtle comment — i.e. one
+    that is not inside a PROTECTED_SPAN. A '#' inside a string literal or an IRI (an
+    ontology namespace IRI ends in one) is not a comment marker, even though a naive
+    `line.find("#")` would treat it as one."""
+    pos = 0
+    for span in PROTECTED_SPAN.finditer(line):
+        idx = line.find("#", pos, span.start())
+        if idx != -1:
+            return idx
+        pos = span.end()
+    idx = line.find("#", pos)
+    return idx if idx != -1 else len(line)
+
+
+def _rewrite_bare_prefix_outside_protected_spans(
+    code: str, pattern: re.Pattern[str], replacement: str
+) -> str:
+    """Apply `pattern.sub(replacement, ...)` to `code`, skipping every PROTECTED_SPAN (a
+    string literal or an IRI) so a prefix quoted as English shorthand inside one is left
+    untouched rather than corrupted."""
+    out: list[str] = []
+    pos = 0
+    for span in PROTECTED_SPAN.finditer(code):
+        out.append(pattern.sub(replacement, code[pos:span.start()]))
+        out.append(span.group(0))
+        pos = span.end()
+    out.append(pattern.sub(replacement, code[pos:]))
+    return "".join(out)
+
+
 def _rewrite_ontology_prefix(text: str, old_prefix: str, new_prefix: str, namespace: str) -> str:
     """Rewrite the ontology file's own vocabulary prefix — its `@prefix` declaration and
     every `old_prefix:Term` usage in the body.
@@ -151,11 +193,15 @@ def _rewrite_ontology_prefix(text: str, old_prefix: str, new_prefix: str, namesp
        `@prefix acme: <https://acme.test/ontology#> .`. Matched first, while the line still
        reads `old_prefix:`, so pass 2 below cannot see it and mangle the IRI.
     2. Every remaining bare `old_prefix:` — e.g. `ex:Concept`, `rdfs:domain ex:Concept` —
-       renamed to `new_prefix:`. `\\b` anchors the match so it cannot fire inside a longer
-       word (`example:` never matches `\\bex:`, because "ex" there is not followed by a
-       colon) or inside an IRI's host text (`https://example.com/...` has no `:` right after
-       "ex" either). The file is small and hand-authored — three classes, three properties —
-       so a bounded regex is a safe, auditable stand-in for a real Turtle-aware rewrite.
+       renamed to `new_prefix:`, but only where it appears in Turtle *code*. Line by line:
+       `_comment_start` finds where a trailing `# ...` comment begins (if any), and
+       `_rewrite_bare_prefix_outside_protected_spans` skips every string literal and IRI in
+       what remains. Without this, a plain `\\bold_prefix:\\b` sweep over the whole file would
+       also rewrite the prefix everywhere it is used as English shorthand in hand-authored
+       prose — a `#` comment explaining the file, or an `rdfs:comment` value — which the
+       seed ontology (Task 10) does. `\\b` still anchors each code-position match so it
+       cannot fire inside a longer word (`example:` never matches `\\bex:`, because "ex"
+       there is not followed by a colon).
 
     The instance prefix (`app:` by default) is untouched: correction C12 scopes this rewrite
     to the vocabulary's own prefix, matching `_rewrite_vocabulary_keys` above, which likewise
@@ -163,9 +209,15 @@ def _rewrite_ontology_prefix(text: str, old_prefix: str, new_prefix: str, namesp
     """
     declaration = re.compile(rf"@prefix\s+{re.escape(old_prefix)}:\s+<[^>]*>\s*\.")
     text = declaration.sub(f"@prefix {new_prefix}: <{namespace}> .", text, count=1)
+
     bare = re.compile(rf"\b{re.escape(old_prefix)}:")
-    text = bare.sub(f"{new_prefix}:", text)
-    return text
+    lines = []
+    for line in text.split("\n"):
+        cut = _comment_start(line)
+        code, comment = line[:cut], line[cut:]
+        rewritten_code = _rewrite_bare_prefix_outside_protected_spans(code, bare, f"{new_prefix}:")
+        lines.append(rewritten_code + comment)
+    return "\n".join(lines)
 
 
 def _reset_metadata(root: Path) -> None:
@@ -231,7 +283,16 @@ def run(root: Path, answers: Answers) -> list[str]:
         if "knowledge.toml" not in rewritten:
             rewritten.append("knowledge.toml")
 
-    shutil.rmtree(root / "specs" / "example", ignore_errors=True)
+    # Guarded on existence, not `ignore_errors=True`: the only case this must tolerate
+    # silently is the directory already being gone (Task 10 has not created it yet in the
+    # shipped template as of this task). `ignore_errors=True` would also swallow a real
+    # failure — a permission error or a locked file, plausible on Windows — and `run` would
+    # then report success with the stale example content still on disk and nothing
+    # downstream to catch it, since the example files carry no {{TOKEN}} for
+    # `remaining_placeholders` to flag.
+    example_dir = root / "specs" / "example"
+    if example_dir.exists():
+        shutil.rmtree(example_dir)
     _reset_metadata(root)
 
     template_readme = root / "docs" / "README.template.md"

@@ -31,7 +31,10 @@ def build_template(tmp_path):
         "@prefix ex: <https://example.com/ontology#> .\n"
         "@prefix app: <https://example.com/id/> .\n"
         "\n"
-        "ex:Concept a rdfs:Class ; rdfs:label \"Concept\"@en .\n",
+        "# Delete anything here that your domain has no use for; ex: is just a starting point.\n"
+        "ex:Concept a rdfs:Class ;\n"
+        "    rdfs:label   \"Concept\"@en ;\n"
+        "    rdfs:comment \"Write ex: before every term.\"@en .\n",
         encoding="utf-8",
     )
     (ontology / "README.md").write_text("# {{PROJECT_NAME}} ontology\n", encoding="utf-8")
@@ -102,11 +105,42 @@ def test_run_rewrites_the_ontology_prefix_lines(tmp_path):
 
 
 def test_run_rewrites_ontology_term_usages_too(tmp_path):
+    """The code positions still rewrite: `ex:Concept a rdfs:Class` becomes `acme:...`."""
     root = build_template(tmp_path)
     init.run(root, ANSWERS)
     text = (root / "ontology" / "ontology.ttl").read_text(encoding="utf-8")
     assert "acme:Concept a rdfs:Class" in text
-    assert "ex:" not in text
+    assert "ex:Concept" not in text
+
+
+def test_ontology_rewrite_leaves_a_hash_comment_alone(tmp_path):
+    """A `#` comment using the prefix as English shorthand ("ex: is just a starting point")
+    is prose a person reads, not code — it must survive untouched, not become `acme:`."""
+    root = build_template(tmp_path)
+    init.run(root, ANSWERS)
+    text = (root / "ontology" / "ontology.ttl").read_text(encoding="utf-8")
+    assert "ex: is just a starting point" in text
+
+
+def test_ontology_rewrite_leaves_a_string_literal_alone(tmp_path):
+    """An `rdfs:comment` string quoting the prefix as shorthand ("Write ex: before every
+    term.") is prose too — a blind \\bold_prefix:\\b sweep would corrupt it into "acme:"."""
+    root = build_template(tmp_path)
+    init.run(root, ANSWERS)
+    text = (root / "ontology" / "ontology.ttl").read_text(encoding="utf-8")
+    assert "Write ex: before every term." in text
+
+
+def test_ontology_rewrite_distinguishes_code_from_prose_in_one_pass(tmp_path):
+    """All three outcomes together, from a single `run`: the code position rewrites, the
+    `#` comment does not, and the `rdfs:comment` string does not — proving the fix tells
+    them apart rather than being coincidentally right about any one in isolation."""
+    root = build_template(tmp_path)
+    init.run(root, ANSWERS)
+    text = (root / "ontology" / "ontology.ttl").read_text(encoding="utf-8")
+    assert "acme:Concept a rdfs:Class" in text
+    assert "ex: is just a starting point" in text
+    assert "Write ex: before every term." in text
 
 
 def test_run_removes_the_example_spec_and_empties_the_dump(tmp_path):

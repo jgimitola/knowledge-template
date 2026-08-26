@@ -681,6 +681,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         print("  -", relative)
 
     skill = root / "integrations" / "code-repo" / ".claude" / "skills" / "knowledge-base"
+    # Off by default: writing into a second, external repository (the code repo) must be an
+    # explicit request (--install-skill), never a side effect of running `init`.
     if args.install_skill and answers.code_repo:
         destination = (
             (root / answers.code_repo).resolve() / ".claude" / "skills" / "knowledge-base"
