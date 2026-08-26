@@ -295,3 +295,155 @@ def test_a_rewritten_specs_instance_iri_satisfies_is_instance(tmp_path):
     widget = config.vocabulary.instance("Widget")
     assert (widget, None, None) in g, "the individual did not parse under the expected IRI at all"
     assert config.vocabulary.is_instance(widget)
+
+
+# --- Ruling C24: both prefixes rewritten in one pass; equal prefixes refused -------------
+
+
+def _declaration_lines(root):
+    """Every `@prefix` declaration line in the ontology file, in file order."""
+    text = (root / "ontology" / "ontology.ttl").read_text(encoding="utf-8")
+    return [line for line in text.split("\n") if line.lstrip().startswith("@prefix")]
+
+
+def test_a_project_prefix_equal_to_the_shipped_instance_prefix_rewrites_both_lines(tmp_path):
+    """Ruling C24. `--prefix app` collides with the shipped `instance_prefix` default, and
+    two sequential passes cannot survive it: pass 1 renames every `ex:` to `app:` including
+    the declaration, and pass 2's `count=1` declaration regex then matches that freshly
+    written line instead of the real `@prefix app:` one, overwriting the vocabulary's IRI
+    with the instances IRI and leaving the genuine instance declaration stale. Two
+    `@prefix app:` lines result; rdflib keeps the last, so every vocabulary term silently
+    resolves into the instances namespace."""
+    from dataclasses import replace
+    root = build_template(tmp_path)
+    init.run(root, replace(ANSWERS, prefix="app", instance_prefix="ind"))
+    config = load_config(root)
+    lines = _declaration_lines(root)
+
+    assert f"@prefix app: <{config.vocabulary.namespace}> ." in lines
+    assert f"@prefix ind: <{config.vocabulary.instances}> ." in lines
+    assert sum(line.startswith("@prefix app:") for line in lines) == 1
+    assert sum(line.startswith("@prefix ind:") for line in lines) == 1
+    assert not any("example.com" in line for line in lines)
+
+
+def test_a_colliding_prefix_still_keeps_terms_and_individuals_apart_in_the_parsed_graph(
+    tmp_path,
+):
+    """The consequence the declaration-level assertions above stand for, through the real
+    pipeline: with `--prefix app`, a term written `app:Concept` and an individual written
+    `ind:Widget` must parse into the two *different* namespaces `load_config` reports, so
+    `is_term` and `is_instance` still tell them apart."""
+    from dataclasses import replace
+    root = build_template(tmp_path)
+    demo = root / "specs" / "demo"
+    demo.mkdir(parents=True)
+    (demo / "spec.md").write_text("---\nid: demo\n---\n\n# Demo\n", encoding="utf-8")
+    (demo / "spec.ttl").write_text(
+        'ind:Widget a app:Concept ;\n    rdfs:label "Widget"@en .\n', encoding="utf-8"
+    )
+    init.run(root, replace(ANSWERS, prefix="app", instance_prefix="ind"))
+
+    from knowledge import graph
+    from knowledge.paths import get_paths
+
+    config = load_config(root)
+    paths = get_paths(root, config.vocabulary.ontology_file)
+    g = graph.load_graph(paths, config.vocabulary, ["demo"])
+    widget = config.vocabulary.instance("Widget")
+    concept = config.vocabulary.term("Concept")
+    assert (widget, None, concept) in g, "the individual did not parse under both IRIs"
+    assert config.vocabulary.is_instance(widget)
+    assert config.vocabulary.is_term(concept)
+    assert not config.vocabulary.is_term(widget)
+
+
+def test_the_two_prefixes_can_swap_places(tmp_path):
+    """The classic swap: the project prefix takes the instance prefix's shipped name and
+    vice versa. No ordering of two sequential passes can get this right — only one
+    simultaneous substitution can."""
+    from dataclasses import replace
+    root = build_template(tmp_path)
+    ontology_path = root / "ontology" / "ontology.ttl"
+    ontology_path.write_text(
+        ontology_path.read_text(encoding="utf-8") + "app:Seed a ex:Concept .\n",
+        encoding="utf-8",
+    )
+    init.run(root, replace(ANSWERS, prefix="app", instance_prefix="ex"))
+    config = load_config(root)
+    text = ontology_path.read_text(encoding="utf-8")
+    lines = _declaration_lines(root)
+
+    assert f"@prefix app: <{config.vocabulary.namespace}> ." in lines
+    assert f"@prefix ex: <{config.vocabulary.instances}> ." in lines
+    assert sum(line.startswith("@prefix app:") for line in lines) == 1
+    assert sum(line.startswith("@prefix ex:") for line in lines) == 1
+    # The body swaps with the declarations: the individual takes `ex:`, the class `app:`.
+    assert "ex:Seed a app:Concept ." in text
+
+
+def test_a_non_colliding_prefix_pair_still_rewrites_both_lines(tmp_path):
+    """The ordinary case must keep working: neither chosen prefix shadows a shipped one."""
+    root = build_template(tmp_path)
+    init.run(root, ANSWERS)
+    config = load_config(root)
+    lines = _declaration_lines(root)
+    assert f"@prefix acme: <{config.vocabulary.namespace}> ." in lines
+    assert f"@prefix app: <{config.vocabulary.instances}> ." in lines
+    assert sum(line.startswith("@prefix acme:") for line in lines) == 1
+    assert sum(line.startswith("@prefix app:") for line in lines) == 1
+    assert not any(line.startswith("@prefix ex:") for line in lines)
+
+
+def test_equal_prefixes_are_refused_before_any_file_is_touched(tmp_path):
+    """Two equal prefixes cannot distinguish vocabulary terms from individuals —
+    `is_term` and `is_instance` compare IRI prefixes, so both would match everything — and
+    no rewrite of the ontology's two `@prefix` lines could fix that. There is no correct
+    output for this input, so `run` refuses it rather than producing a plausible-looking
+    wrong one, and refuses it before writing anything."""
+    from dataclasses import replace
+    root = build_template(tmp_path)
+    with pytest.raises(RuntimeError) as exc:
+        init.run(root, replace(ANSWERS, prefix="app", instance_prefix="app"))
+    assert "must differ" in str(exc.value)
+
+    assert "[template]" in (root / "knowledge.toml").read_text(encoding="utf-8")
+    ontology = (root / "ontology" / "ontology.ttl").read_text(encoding="utf-8")
+    assert "@prefix ex: <https://example.com/ontology#> ." in ontology
+    assert "@prefix app: <https://example.com/id/> ." in ontology
+    assert (root / "specs" / "example").is_dir()
+
+
+def test_the_cli_refuses_equal_prefixes(tmp_path, monkeypatch, capsys):
+    """The refusal has to reach the person who typed it. `app` is both the shipped
+    `instance_prefix` default and the value the instance-prefix prompt itself suggests, so
+    `--prefix app` with no `--instance-prefix` lands here by default."""
+    from knowledge import cli
+
+    root = build_template(tmp_path)
+    monkeypatch.chdir(root)
+    code = cli.main_argv([
+        "init", "--name", "Acme", "--base-iri", "https://acme.test/",
+        "--prefix", "app", "--instance-prefix", "app", "--code-repo", "",
+        "--publish-target", "none", "--dependency-preset", "none",
+    ])
+    assert code == 1
+    assert "must differ" in capsys.readouterr().err
+    assert "[template]" in (root / "knowledge.toml").read_text(encoding="utf-8")
+
+
+def test_a_config_whose_two_shipped_prefixes_are_the_same_is_refused(tmp_path):
+    """The mapping the rewrite is built from is keyed by *old* prefix, so two identical old
+    prefixes would collapse into one entry and silently drop a declaration. That config is
+    already broken, but it must fail loudly rather than half-rewrite the ontology."""
+    root = build_template(tmp_path)
+    toml_path = root / "knowledge.toml"
+    toml_path.write_text(
+        toml_path.read_text(encoding="utf-8").replace(
+            'instance_prefix = "app"', 'instance_prefix = "ex"'
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError) as exc:
+        init.run(root, ANSWERS)
+    assert "must differ" in str(exc.value)
