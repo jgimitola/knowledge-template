@@ -5,11 +5,15 @@ unconfigured = true
 [project]
 name = "{{PROJECT_NAME}}"
 
+# namespace, instances and prefix are parsed, not just read — by load_config here, and by
+# rdflib's Turtle parser for the ontology file's own @prefix line. A token would break both
+# before `init` ever ran, so these three ship as working defaults and `init` rewrites them in
+# place. The [template] table above is what actually marks the repository unconfigured.
 [vocabulary]
 ontology_file   = "ontology.ttl"
-namespace       = "{{BASE_IRI}}ontology#"
-instances       = "{{BASE_IRI}}id/"
-prefix          = "{{PREFIX}}"
+namespace       = "https://example.com/ontology#"
+instances       = "https://example.com/id/"
+prefix          = "ex"
 instance_prefix = "app"
 
 # Terms the mechanical checks need to know about. An empty value disables its check,
