@@ -1,0 +1,193 @@
+# A vocabulary for documenting a web application, as a worked example for
+# ontology/AUTHORING.md. Nothing loads this file. Copy what your domain needs into your
+# project's ontology file (ontology.ttl by default), or copy the whole thing if you are
+# documenting a web app. This file is not substituted by `knowledge init` — it carries no
+# double-brace placeholder, since it is not part of init's substitution manifest.
+
+@prefix web:     <https://example.com/ontology#> .
+@prefix app:     <https://example.com/id/> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+web:InterfaceElement a rdfs:Class ;
+    rdfs:label   "Interface element"@en ;
+    rdfs:comment "Anything the user navigates or reads on screen."@en .
+
+web:Module a rdfs:Class ;
+    rdfs:subClassOf web:InterfaceElement ;
+    rdfs:label      "Module"@en ;
+    rdfs:comment    "A product area with its own wiki page and its own place in the navigation."@en .
+
+web:View a rdfs:Class ;
+    rdfs:subClassOf web:InterfaceElement ;
+    rdfs:label      "View"@en ;
+    rdfs:comment    "A screen the user lands on, identified by a route."@en .
+
+web:Section a rdfs:Class ;
+    rdfs:subClassOf web:InterfaceElement ;
+    rdfs:label      "Section"@en ;
+    rdfs:comment    "A region inside a view: a card, a table, a modal."@en .
+
+web:Field a rdfs:Class ;
+    rdfs:label   "Field"@en ;
+    rdfs:comment "A single datum the user reads or edits."@en .
+
+web:Action a rdfs:Class ;
+    rdfs:label   "Action"@en ;
+    rdfs:comment "Something a user or the system can do."@en .
+
+web:Rule a rdfs:Class ;
+    rdfs:label   "Rule"@en ;
+    rdfs:comment "A constraint or invariant the product enforces."@en .
+
+web:Concept a rdfs:Class ;
+    rdfs:label   "Domain concept"@en ;
+    rdfs:comment "A thing the product is about, independent of any screen: a workspace, a currency, a category."@en .
+
+web:State a rdfs:Class ;
+    rdfs:label   "State"@en ;
+    rdfs:comment "A condition a domain concept can be in."@en .
+
+web:Actor a rdfs:Class ;
+    rdfs:label   "Actor"@en ;
+    rdfs:comment "Who performs an action."@en .
+
+web:partOf a rdf:Property ;
+    rdfs:label   "part of"@en ;
+    rdfs:domain  web:InterfaceElement ;
+    rdfs:range   web:InterfaceElement ;
+    rdfs:comment "Not transitive. For the whole chain use the property path web:partOf+."@en .
+
+web:contains a rdf:Property ;
+    rdfs:label   "contains"@en ;
+    rdfs:domain  web:InterfaceElement ;
+    rdfs:range   web:InterfaceElement ;
+    rdfs:comment "The reading inverse of web:partOf. Not transitive."@en .
+
+web:displays a rdf:Property ;
+    rdfs:label  "displays"@en ;
+    rdfs:domain web:InterfaceElement ;
+    rdfs:range  web:Field .
+
+web:displayedIn a rdf:Property ;
+    rdfs:label  "displayed in"@en ;
+    rdfs:domain web:Field ;
+    rdfs:range  web:InterfaceElement .
+
+web:allows a rdf:Property ;
+    rdfs:label  "allows"@en ;
+    rdfs:domain web:InterfaceElement ;
+    rdfs:range  web:Action .
+
+web:availableIn a rdf:Property ;
+    rdfs:label  "available in"@en ;
+    rdfs:domain web:Action ;
+    rdfs:range  web:InterfaceElement .
+
+web:performedBy a rdf:Property ;
+    rdfs:label  "performed by"@en ;
+    rdfs:domain web:Action ;
+    rdfs:range  web:Actor .
+
+web:modifies a rdf:Property ;
+    rdfs:label   "modifies"@en ;
+    rdfs:domain  web:Action ;
+    rdfs:comment "Values are a web:Field or a web:Concept. No rdfs:range is declared, because two ranges would be read as both types at once."@en .
+
+web:produces a rdf:Property ;
+    rdfs:label  "produces"@en ;
+    rdfs:domain web:Action ;
+    rdfs:range  web:Concept .
+
+web:requires a rdf:Property ;
+    rdfs:label   "requires"@en ;
+    rdfs:domain  web:Action ;
+    rdfs:comment "Values are a web:Field or a web:Rule. No rdfs:range is declared, because two ranges would be read as both types at once."@en .
+
+web:constrains a rdf:Property ;
+    rdfs:label   "constrains"@en ;
+    rdfs:domain  web:Rule ;
+    rdfs:comment "Values are anything a rule can restrict: a field, an action, a section or a concept."@en .
+
+web:constrainedBy a rdf:Property ;
+    rdfs:label   "constrained by"@en ;
+    rdfs:range   web:Rule ;
+    rdfs:comment "The reading inverse of web:constrains."@en .
+
+web:appliesTo a rdf:Property ;
+    rdfs:label   "applies to"@en ;
+    rdfs:domain  web:Rule ;
+    rdfs:comment "Values are a web:InterfaceElement or a web:Concept. No rdfs:range is declared, because two ranges would be read as both types at once."@en .
+
+web:scopedTo a rdf:Property ;
+    rdfs:label   "scoped to"@en ;
+    rdfs:domain  web:InterfaceElement ;
+    rdfs:range   web:Concept ;
+    rdfs:comment "The concept whose selection determines what this element shows."@en .
+
+web:relatesTo a rdf:Property ;
+    rdfs:label   "relates to"@en ;
+    rdfs:domain  web:Concept ;
+    rdfs:range   web:Concept ;
+    rdfs:comment "Read as symmetric, but assert it in whichever direction reads better; the reverse triple is not inferred."@en .
+
+web:hasState a rdf:Property ;
+    rdfs:label  "has state"@en ;
+    rdfs:domain web:Concept ;
+    rdfs:range  web:State .
+
+web:optionsFrom a rdf:Property ;
+    rdfs:label   "options from"@en ;
+    rdfs:domain  web:Field ;
+    rdfs:range   web:Concept ;
+    rdfs:comment "The field's selectable values are instances of this concept."@en .
+
+web:route a rdf:Property ;
+    rdfs:label   "route"@en ;
+    rdfs:domain  web:View ;
+    rdfs:range   xsd:string ;
+    rdfs:comment "Single-valued: a view has one route."@en .
+
+web:editable a rdf:Property ;
+    rdfs:label   "editable"@en ;
+    rdfs:domain  web:Field ;
+    rdfs:range   xsd:boolean ;
+    rdfs:comment "Single-valued."@en .
+
+web:required a rdf:Property ;
+    rdfs:label   "required"@en ;
+    rdfs:domain  web:Field ;
+    rdfs:range   xsd:boolean ;
+    rdfs:comment "Single-valued."@en .
+
+web:format a rdf:Property ;
+    rdfs:label   "format"@en ;
+    rdfs:domain  web:Field ;
+    rdfs:range   xsd:string ;
+    rdfs:comment "How the value is entered or shown, in plain words."@en .
+
+web:defaultsTo a rdf:Property ;
+    rdfs:label  "defaults to"@en ;
+    rdfs:domain web:Field ;
+    rdfs:range  rdfs:Literal .
+
+web:viewport a rdf:Property ;
+    rdfs:label   "viewport"@en ;
+    rdfs:domain  web:InterfaceElement ;
+    rdfs:range   xsd:string ;
+    rdfs:comment "Which screen width this element renders at: 'desktop' or 'narrow'. Single-valued, and present only on elements that exist in one layout and not the other."@en .
+
+web:emptyState a rdf:Property ;
+    rdfs:label   "empty state"@en ;
+    rdfs:domain  web:InterfaceElement ;
+    rdfs:range   xsd:string ;
+    rdfs:comment "What the element shows when it has nothing to list."@en .
+
+web:endpoint a rdf:Property ;
+    rdfs:label   "endpoint"@en ;
+    rdfs:domain  web:Action ;
+    rdfs:range   xsd:string ;
+    rdfs:comment "HTTP method and path backing the action. Optional; use only where it helps."@en .

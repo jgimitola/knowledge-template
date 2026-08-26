@@ -1,0 +1,38 @@
+@prefix ex:      <https://example.com/ontology#> .
+@prefix app:     <https://example.com/id/> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+# A starting point, not a fixture. Three classes and three properties are enough to write a
+# first spec against; ontology/AUTHORING.md is how you grow this into your domain's real
+# vocabulary. Delete anything here that your domain has no use for.
+
+ex:Concept a rdfs:Class ;
+    rdfs:label   "Concept"@en ;
+    rdfs:comment "A thing the domain is about, independent of how it is presented."@en .
+
+ex:Rule a rdfs:Class ;
+    rdfs:label   "Rule"@en ;
+    rdfs:comment "A constraint or invariant the domain enforces."@en .
+
+ex:Actor a rdfs:Class ;
+    rdfs:label   "Actor"@en ;
+    rdfs:comment "Who performs something."@en .
+
+ex:relatesTo a rdf:Property ;
+    rdfs:label   "relates to"@en ;
+    rdfs:domain  ex:Concept ;
+    rdfs:range   ex:Concept ;
+    rdfs:comment "Read as symmetric, but assert it in whichever direction reads better; the reverse triple is not inferred."@en .
+
+ex:constrains a rdf:Property ;
+    rdfs:label   "constrains"@en ;
+    rdfs:domain  ex:Rule ;
+    rdfs:comment "What the rule restricts. No rdfs:range: the values span more than one type, and two ranges would be read as requiring both at once."@en .
+
+ex:performedBy a rdf:Property ;
+    rdfs:label  "performed by"@en ;
+    rdfs:range  ex:Actor .

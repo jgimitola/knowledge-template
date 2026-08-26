@@ -1,0 +1,46 @@
+# The knowledge.toml fragment that matches ontology/examples/webapp.ttl. Copy the keys you
+# want; nothing reads this file.
+
+[vocabulary]
+rule_class                 = "Rule"
+concept_class               = "Concept"
+concept_spec                = "concepts"
+field_class                 = "Field"
+field_name_pattern          = "^[A-Z][A-Za-z0-9]*_[a-z][A-Za-z0-9]*$"
+underscore_reserved        = true
+functional_properties      = ["route", "editable", "required", "viewport", "defaultsTo"]
+verbatim_string_properties = ["emptyState"]
+
+[[ask]]
+name  = "modules"
+query = "SELECT ?label WHERE { ?m a web:Module ; rdfs:label ?label } ORDER BY ?label"
+
+[[ask]]
+name  = "views and their routes"
+query = "SELECT ?label ?route WHERE { ?v a web:View ; rdfs:label ?label ; web:route ?route } ORDER BY ?route"
+
+[[ask]]
+name  = "what the user sees only on narrow screens"
+query = "SELECT ?label WHERE { ?s web:viewport \"narrow\" ; rdfs:label ?label } ORDER BY ?label"
+
+[[ask]]
+name  = "rules, and what each constrains"
+query = """
+SELECT ?rule ?target WHERE {
+  ?r a web:Rule ; rdfs:label ?rule ; web:constrains ?t .
+  OPTIONAL { ?t rdfs:label ?tl }
+  BIND(COALESCE(?tl, REPLACE(STR(?t), "^.*[#/]", "")) AS ?target)
+} ORDER BY ?rule
+"""
+
+[[ask]]
+name  = "fields the user cannot edit"
+query = "SELECT ?label WHERE { ?f web:editable false ; rdfs:label ?label } ORDER BY ?label"
+
+[[ask]]
+name  = "concepts and how many things reference them"
+query = """
+SELECT ?label (COUNT(?s) AS ?references) WHERE {
+  ?c a web:Concept ; rdfs:label ?label . ?s ?p ?c .
+} GROUP BY ?label ORDER BY DESC(?references)
+"""

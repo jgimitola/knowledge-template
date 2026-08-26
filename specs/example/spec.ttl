@@ -1,0 +1,8 @@
+app:Example a ex:Concept ;
+    rdfs:label   "Example"@en ;
+    rdfs:comment "A worked example, so a fresh clone has something to run every command against."@en .
+
+app:ExampleIsDeletedOnInit a ex:Rule ;
+    rdfs:label      "The example is deleted on init"@en ;
+    rdfs:comment    "A template that ships someone else's content makes the first real spec harder to write, not easier."@en ;
+    ex:constrains   app:Example .
