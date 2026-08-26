@@ -477,12 +477,30 @@ def cmd_publish(args: argparse.Namespace) -> int:
     paths, config, conn = open_repo(args)
     from knowledge import publish
 
+    # --dry-run means "render locally, push nothing" — it is not a mode of publishing, it is
+    # the thing you do *instead* of publishing. So it runs regardless of publish.target,
+    # including "none": a fresh template user can preview what would be published before
+    # they have decided (or configured) where it would go.
+    if args.dry_run:
+        out = Path(args.output) if args.output else paths.root / "build" / "wiki"
+        out.mkdir(parents=True, exist_ok=True)
+        existing = set(_clear_markdown(out))
+        written = publish.write_pages(conn, paths, out, config.publish.sidebar)
+        print(f"{len(written)} page(s) written to {out}")
+        for name in sorted(written):
+            print("   ", name)
+        stale = sorted(existing - set(written))
+        if stale:
+            print(f"{len(stale)} stale page(s) removed: {', '.join(stale)}")
+        return 0
+
     target = config.publish.target
     if target == "none":
-        # "none" is the shipped default. A freshly-templated repository has no wiki, no
-        # publish directory — nothing this tooling could safely guess — so it refuses to
-        # publish rather than picking a destination (e.g. assuming github-wiki) that the
-        # project never asked for.
+        # "none" is the shipped default, and it guards only a real publish — --dry-run above
+        # already handles the "just show me" case regardless of this. A freshly-templated
+        # repository has no wiki, no publish directory — nothing this tooling could safely
+        # guess — so it refuses to publish rather than picking a destination (e.g. assuming
+        # github-wiki) that the project never asked for.
         print(
             "publishing is not configured — set publish.target in knowledge.toml"
             " to 'directory' or 'github-wiki'",
@@ -501,18 +519,13 @@ def cmd_publish(args: argparse.Namespace) -> int:
             )
             return 1
         out_dir = Path(raw_out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        # Same reason the dry-run and github-wiki paths both clear first: a directory publish
+        # is a standing output a reader opens later and trusts. A renamed or dropped spec has
+        # to actually lose its stale page, not leave one sitting there looking current.
+        existing = set(_clear_markdown(out_dir))
         written = publish.write_pages(conn, paths, out_dir, config.publish.sidebar)
         print(f"{len(written)} page(s) written to {out_dir}")
-        return 0
-
-    if args.dry_run:
-        out = Path(args.output) if args.output else paths.root / "build" / "wiki"
-        out.mkdir(parents=True, exist_ok=True)
-        existing = set(_clear_markdown(out))
-        written = publish.write_pages(conn, paths, out, config.publish.sidebar)
-        print(f"{len(written)} page(s) written to {out}")
-        for name in sorted(written):
-            print("   ", name)
         stale = sorted(existing - set(written))
         if stale:
             print(f"{len(stale)} stale page(s) removed: {', '.join(stale)}")

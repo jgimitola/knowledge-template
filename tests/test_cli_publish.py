@@ -152,3 +152,51 @@ def test_publish_directory_target_without_an_out_dir_fails_cleanly(working, caps
     assert exit_code == 1
     err = capsys.readouterr().err
     assert "publish.out_dir is required" in err
+
+
+def test_dry_run_succeeds_when_publish_target_is_none(working, tmp_path, capsys):
+    """--dry-run is a preview, not a mode of publishing — a fresh template user with nothing
+    configured yet must still be able to see what would be published."""
+    write_knowledge_toml(working.root, target="none")
+    out = tmp_path / "preview"
+
+    args = run(["publish", "--dry-run", "-o", str(out)])
+    exit_code = args.handler(args)
+
+    assert exit_code == 0
+    assert (out / "Assets.md").is_file()
+
+
+def test_dry_run_takes_the_dry_run_path_even_under_a_directory_target(working, tmp_path, capsys):
+    """A directory-target publish never lists individual pages; the dry-run path always does
+    (see test_dry_run_removes_a_stale_page_before_writing). That listing is the distinguishing
+    signal that --dry-run was honoured rather than silently ignored in favour of a real
+    directory write — which would skip -o's target entirely and write to the configured
+    out_dir instead."""
+    configured = tmp_path / "cfg-out"
+    write_knowledge_toml(working.root, target="directory", out_dir=configured.as_posix())
+    preview = tmp_path / "preview-out"
+
+    args = run(["publish", "--dry-run", "-o", str(preview)])
+    exit_code = args.handler(args)
+
+    assert exit_code == 0
+    assert (preview / "Assets.md").is_file()
+    assert not configured.exists()
+    printed = capsys.readouterr().out
+    assert "    Assets.md" in printed  # the dry-run path's per-page listing
+
+
+def test_publish_directory_target_removes_a_page_whose_spec_is_gone(working, tmp_path, capsys):
+    out = tmp_path / "docs-out"
+    out.mkdir()
+    (out / "Old-Name.md").write_text("stale content\n", encoding="utf-8")
+    write_knowledge_toml(working.root, target="directory", out_dir=out.as_posix())
+
+    args = run(["publish"])
+    exit_code = args.handler(args)
+
+    assert exit_code == 0
+    assert not (out / "Old-Name.md").exists()
+    printed = capsys.readouterr().out
+    assert "stale page(s) removed: Old-Name.md" in printed
