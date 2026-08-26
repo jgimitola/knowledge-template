@@ -11,7 +11,7 @@ Placeholders split by who reads the file they live in (ruling C12):
   parser rejects `@prefix {{PREFIX}}:` outright, so a token there would break the shipped
   template before `init` had a chance to run (`init.run` itself calls `load_config`). Those
   fields are rewritten in place — see `_rewrite_vocabulary_keys` and
-  `_rewrite_ontology_prefix` — not substituted.
+  `_rewrite_ontology_prefixes` — not substituted.
 
 Either way, `[template] unconfigured = true` is what marks the repository as not yet
 configured, not the presence of any placeholder — that table survives even though the
@@ -129,7 +129,7 @@ def _rewrite_vocabulary_keys(text: str, values: dict[str, str]) -> str:
     `{{TOKEN}}` placeholders — see the module docstring — so `substitute`'s token sweep
     never touches them; they need their own rewrite. `instance_prefix` is included so
     knowledge.toml stays consistent with the ontology file's own instance `@prefix` line
-    (see `_rewrite_ontology_prefix`) — both must name the same prefix, or SPARQL queries
+    (see `_rewrite_ontology_prefixes`) — both must name the same prefix, or SPARQL queries
     built from `vocab.sparql_prefixes` would declare `app:` while specs actually use
     whatever `answers.instance_prefix` renamed it to.
 
@@ -173,12 +173,13 @@ def _comment_start(line: str) -> int:
     return idx if idx != -1 else len(line)
 
 
-def _rewrite_bare_prefix_outside_protected_spans(
-    code: str, pattern: re.Pattern[str], replacement: str
+def _rewrite_bare_prefixes_outside_protected_spans(
+    code: str, pattern: re.Pattern[str], replacement
 ) -> str:
     """Apply `pattern.sub(replacement, ...)` to `code`, skipping every PROTECTED_SPAN (a
     string literal or an IRI) so a prefix quoted as English shorthand inside one is left
-    untouched rather than corrupted."""
+    untouched rather than corrupted. `replacement` may be a string or a match-to-string
+    function, exactly as `re.sub` accepts."""
     out: list[str] = []
     pos = 0
     for span in PROTECTED_SPAN.finditer(code):
@@ -189,73 +190,54 @@ def _rewrite_bare_prefix_outside_protected_spans(
     return "".join(out)
 
 
-def _rewrite_prefix_pair(text: str, old_prefix: str, new_prefix: str, namespace: str) -> str:
-    """Rewrite one Turtle `@prefix` declaration — its name and IRI together — plus every
-    bare `old_prefix:Term` usage in the body. Shared by `_rewrite_ontology_prefix` below for
-    both prefixes the ontology file declares: the project vocabulary's own prefix (`ex:` by
-    default) and the instance prefix (`app:` by default) any spec's individuals use.
+def _rewrite_ontology_prefixes(text: str, mapping: dict[str, tuple[str, str]]) -> str:
+    """Rewrite every declared prefix the ontology file names, and every bare usage of it, in
+    ONE simultaneous substitution (ruling C24).
 
-    Two bounded passes, in this order:
+    `mapping` sends each OLD prefix name to `(new_prefix_name, new_namespace_iri)`. For the
+    ontology's two configurable prefixes that is
+    `{old_prefix: (new_prefix, namespace), old_instance_prefix: (new_instance_prefix, instances)}`.
 
-    1. The declaration line itself, matched as a whole so the prefix name and its IRI are
-       replaced together: `@prefix ex: <https://example.com/ontology#> .` becomes
-       `@prefix acme: <https://acme.test/ontology#> .`. Matched first, while the line still
-       reads `old_prefix:`, so pass 2 below cannot see it and mangle the IRI.
-    2. Every remaining bare `old_prefix:` — e.g. `ex:Concept`, `rdfs:domain ex:Concept` —
-       renamed to `new_prefix:`, but only where it appears in Turtle *code*. Line by line:
-       `_comment_start` finds where a trailing `# ...` comment begins (if any), and
-       `_rewrite_bare_prefix_outside_protected_spans` skips every string literal and IRI in
-       what remains. Without this, a plain `\\bold_prefix:\\b` sweep over the whole file would
-       also rewrite the prefix everywhere it is used as English shorthand in hand-authored
-       prose — a `#` comment explaining the file, or an `rdfs:comment` value — which the
-       seed ontology (Task 10) does. `\\b` still anchors each code-position match so it
-       cannot fire inside a longer word (`example:` never matches `\\bex:`, because "ex"
-       there is not followed by a colon).
+    A single pass is the only correct approach when the two prefixes may swap
+    (`--prefix app --instance-prefix ex`) or one may shadow the other's shipped name
+    (`--prefix app`, where `app` is the shipped instance prefix). Two sequential passes let
+    the second observe the first's output: after pass 1 renames `ex:` to `app:`, a pass 2
+    that searches for `app:` would match the line pass 1 just wrote and rewrite it again.
+    Keying the substitution on OLD prefix names and applying it once removes that hazard —
+    it is the classic in-place swap, and only a simultaneous rewrite gets it right.
+
+    Declaration lines and body usages are handled on disjoint sets of lines (a line either
+    is a `@prefix` declaration or it is not), so no rewritten declaration can be seen a
+    second time by the body pass. A `@prefix` line whose prefix is not in `mapping`
+    (`rdf:`, `rdfs:`, …) is left exactly as it stands.
     """
-    declaration = re.compile(rf"@prefix\s+{re.escape(old_prefix)}:\s+<[^>]*>\s*\.")
-    text = declaration.sub(f"@prefix {new_prefix}: <{namespace}> .", text, count=1)
+    if not mapping:
+        return text
 
-    bare = re.compile(rf"\b{re.escape(old_prefix)}:")
-    lines = []
+    # Longest name first so an alternation never matches a prefix that is itself a prefix of
+    # another (e.g. `ex` before `example`); `\b` and the trailing `:` already prevent that,
+    # but ordering keeps the intent explicit.
+    alternation = "|".join(re.escape(name) for name in sorted(mapping, key=len, reverse=True))
+    declaration = re.compile(rf"^(\s*@prefix\s+)({alternation})(:\s+)<[^>]*>(\s*\.\s*)$")
+    bare = re.compile(rf"\b({alternation}):")
+
+    def rename(match: re.Match[str]) -> str:
+        return f"{mapping[match.group(1)][0]}:"
+
+    lines: list[str] = []
     for line in text.split("\n"):
+        if line.lstrip().startswith("@prefix"):
+            match = declaration.match(line)
+            if match:
+                new_prefix, new_iri = mapping[match.group(2)]
+                lines.append(f"{match.group(1)}{new_prefix}{match.group(3)}<{new_iri}>{match.group(4)}")
+            else:
+                lines.append(line)
+            continue
         cut = _comment_start(line)
         code, comment = line[:cut], line[cut:]
-        rewritten_code = _rewrite_bare_prefix_outside_protected_spans(code, bare, f"{new_prefix}:")
-        lines.append(rewritten_code + comment)
+        lines.append(_rewrite_bare_prefixes_outside_protected_spans(code, bare, rename) + comment)
     return "\n".join(lines)
-
-
-def _rewrite_ontology_prefix(
-    text: str,
-    old_prefix: str,
-    new_prefix: str,
-    namespace: str,
-    old_instance_prefix: str,
-    new_instance_prefix: str,
-    instances: str,
-) -> str:
-    """Rewrite both prefixes the ontology file declares, via two independent
-    `_rewrite_prefix_pair` passes: the project vocabulary's own prefix (`ex:` by default,
-    rewritten first) and the instance prefix (`app:` by default, rewritten second).
-
-    The instance prefix is not optional to rewrite. `graph.turtle_source` concatenates
-    ontology.ttl (which declares both `@prefix` lines) with every spec's bare `.ttl` — a
-    spec never declares its own prefixes, so an individual like `app:Widget` in a spec
-    resolves against *this file's* `@prefix app:` declaration when the whole thing is parsed
-    as one Turtle document. Leaving that declaration pointed at the old instances IRI would
-    silently detach every individual any spec ever writes from `config.vocabulary.instances`
-    — `vocab.is_instance()` tests a literal IRI prefix, so it would return False for all of
-    them without erroring, which in turn switches off `graph.dangling_terms`'s instance half
-    and the underscore half of `lint.naming_violations` while both keep reporting clean.
-
-    The two passes are independent — each searches only for its own *old* prefix text, so
-    rewriting `ex:` first can't touch anything the `app:` pass is about, and vice versa —
-    order between them does not matter for correctness (project prefix is rewritten first
-    here only because that mirrors the order the two `@prefix` lines are declared).
-    """
-    text = _rewrite_prefix_pair(text, old_prefix, new_prefix, namespace)
-    text = _rewrite_prefix_pair(text, old_instance_prefix, new_instance_prefix, instances)
-    return text
 
 
 def _reset_metadata(root: Path) -> None:
@@ -300,6 +282,28 @@ def run(root: Path, answers: Answers) -> list[str]:
     ontology_file = config.vocabulary.ontology_file
     old_prefix = config.vocabulary.prefix
     old_instance_prefix = config.vocabulary.instance_prefix
+
+    # Refuse equal prefixes before touching a single file (ruling C24). A vocabulary prefix
+    # and an instance prefix that are the same string cannot tell terms from individuals —
+    # `vocab.is_term` and `vocab.is_instance` discriminate by prefix, so both would match
+    # everything — and no rewrite of the ontology's two `@prefix` lines could repair that.
+    # There is no correct output for this input, so `run` stops rather than produce a
+    # plausible-looking wrong one, and stops before writing so the template is left intact.
+    if answers.prefix == answers.instance_prefix:
+        raise RuntimeError(
+            "prefix and instance_prefix must differ — one names vocabulary terms and the"
+            " other individuals, and is_term/is_instance tell them apart by prefix"
+        )
+    # The rewrite mapping is keyed on the OLD prefix names, so two identical old prefixes
+    # would collapse into a single entry and silently drop one declaration. That shipped
+    # config is already incoherent; fail loudly rather than half-rewrite the ontology.
+    if old_prefix == old_instance_prefix:
+        raise RuntimeError(
+            "knowledge.toml's vocabulary.prefix and vocabulary.instance_prefix must differ"
+            " — the prefix rewrite is keyed on the old prefix, and two equal old prefixes"
+            " cannot both be mapped"
+        )
+
     values = _values(answers, ontology_file)
     namespace = values["BASE_IRI"] + "ontology#"
     instances = values["BASE_IRI"] + "id/"
@@ -311,9 +315,12 @@ def run(root: Path, answers: Answers) -> list[str]:
     ontology_path = root / "ontology" / ontology_file
     if ontology_path.is_file():
         text = ontology_path.read_text(encoding="utf-8")
-        new_text = _rewrite_ontology_prefix(
-            text, old_prefix, answers.prefix, namespace,
-            old_instance_prefix, answers.instance_prefix, instances,
+        new_text = _rewrite_ontology_prefixes(
+            text,
+            {
+                old_prefix: (answers.prefix, namespace),
+                old_instance_prefix: (answers.instance_prefix, instances),
+            },
         )
         if new_text != text:
             ontology_path.write_text(new_text, encoding="utf-8", newline="\n")
