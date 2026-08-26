@@ -11,16 +11,16 @@ repository (see [Your knowledge base](#your-knowledge-base) below for where that
 
 ## Which command answers which question
 
-| You want                                   | Command                                   |
-| ------------------------------------------ | ----------------------------------------- |
-| The specs that exist, and their status     | `knowledge list`                          |
-| Everything one spec says                   | `knowledge show <spec-id>`                |
-| Every triple touching one node             | `knowledge describe <{{INSTANCE_PREFIX}}:Node>` |
-| An answer computed across the whole graph  | `knowledge query "<SPARQL>"`              |
-| A preset survey (the questions asked often) | `knowledge ask`                          |
-| Contradictions in the graph                | `knowledge contradictions`                |
-| Open questions blocking verification       | `knowledge questions`                     |
-| Which files a spec depends on              | `knowledge dep list <spec-id>`            |
+| You want                                    | Command                                         |
+| ------------------------------------------- | ----------------------------------------------- |
+| The specs that exist, and their status      | `knowledge list`                                |
+| Everything one spec says                    | `knowledge show <spec-id>`                      |
+| Every triple touching one node              | `knowledge describe <{{INSTANCE_PREFIX}}:Node>` |
+| An answer computed across the whole graph   | `knowledge query "<SPARQL>"`                    |
+| A preset survey (the questions asked often) | `knowledge ask`                                 |
+| Contradictions in the graph                 | `knowledge contradictions`                      |
+| Open questions blocking verification        | `knowledge questions`                           |
+| Which files a spec depends on               | `knowledge dep list <spec-id>`                  |
 
 ## `show` takes a spec id; `describe` takes a node name
 
