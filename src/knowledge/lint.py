@@ -16,8 +16,6 @@ from rdflib import RDF, RDFS, Graph, URIRef
 from knowledge.paths import Paths
 from knowledge.vocab import Vocabulary
 
-FIELD_NAME = re.compile(r"^[A-Z][A-Za-z0-9]*_[a-z][A-Za-z0-9]*$")
-
 
 def _local(term) -> str:
     return str(term).rsplit("#", 1)[-1].rsplit("/", 1)[-1]
@@ -46,15 +44,21 @@ def invented_types(g: Graph, vocab: Vocabulary) -> list[str]:
     return sorted(used - classes)
 
 
-def restated_rule_comments(g: Graph, vocab: Vocabulary) -> list[str]:
+def restated_rule_comments(g: Graph, vocab: Vocabulary) -> list[str] | None:
     """A comment that just repeats the label carries no reason a reader could not already
-    infer from the label alone — the whole point of a rule's rdfs:comment."""
+    infer from the label alone — the whole point of a rule's rdfs:comment.
+
+    None when no rule class is configured: a project without a rule class has no rules for
+    this to be about, which is different from having rules that all pass.
+    """
+    if not vocab.checks.rule_class:
+        return None
 
     def norm(text: str) -> str:
         return text.strip().rstrip(".").lower()
 
     offenders = []
-    for rule in g.subjects(RDF.type, vocab.term("Rule")):
+    for rule in g.subjects(RDF.type, vocab.term(vocab.checks.rule_class)):
         label = next((str(o) for o in g.objects(rule, RDFS.label)), "")
         comment = next((str(o) for o in g.objects(rule, RDFS.comment)), "")
         if not comment or norm(comment) == norm(label):
@@ -62,21 +66,32 @@ def restated_rule_comments(g: Graph, vocab: Vocabulary) -> list[str]:
     return sorted(offenders)
 
 
-def naming_violations(g: Graph, vocab: Vocabulary) -> list[str]:
-    """Fields follow `<Owner>_<field>`; every other individual avoids the underscore that
-    pattern reserves for fields (ontology/README.md's naming table)."""
+def naming_violations(g: Graph, vocab: Vocabulary) -> list[str] | None:
+    """Individuals follow the project's naming conventions.
+
+    Two independent halves, each separately configurable: a pattern every instance of the
+    field class must match, and a reservation of the underscore for that class alone.
+    """
+    checks = vocab.checks
+    if not checks.field_class:
+        return None
+    pattern = re.compile(checks.field_name_pattern) if checks.field_name_pattern else None
+    if pattern is None and not checks.underscore_reserved:
+        return None
+
+    fields = set(g.subjects(RDF.type, vocab.term(checks.field_class)))
     offenders = []
-    fields = set(g.subjects(RDF.type, vocab.term("Field")))
-    for term in fields:
-        if not FIELD_NAME.match(_local(term)):
-            offenders.append(f"{term} does not match the <Owner>_<field> pattern")
-    non_fields = {
-        s for s in g.subjects(RDF.type, None)
-        if vocab.is_instance(s) and s not in fields
-    }
-    for term in non_fields:
-        if "_" in _local(term):
-            offenders.append(f"{term} uses an underscore, which is reserved for fields")
+    if pattern is not None:
+        for term in fields:
+            if not pattern.match(_local(term)):
+                offenders.append(
+                    f"{term} does not match {checks.field_name_pattern}"
+                )
+    if checks.underscore_reserved:
+        others = {s for s in g.subjects(RDF.type, None) if vocab.is_instance(s) and s not in fields}
+        for term in others:
+            if "_" in _local(term):
+                offenders.append(f"{term} uses an underscore, which is reserved for fields")
     return sorted(offenders)
 
 
@@ -156,49 +171,58 @@ def domain_range_violations(g: Graph, vocab: Vocabulary) -> list[str]:
     return sorted(offenders)
 
 
-def ungrounded_empty_states(paths: Paths, vocab: Vocabulary, ids) -> list[str]:
-    """An emptyState literal no sentence in the owning spec.md states.
+def ungrounded_literals(paths: Paths, vocab: Vocabulary, ids) -> list[str] | None:
+    """A literal no sentence in the owning spec.md states.
 
-    emptyState is the one predicate whose value is a verbatim UI string rather than a
-    paraphrase, which makes "does the prose say this?" a question code can answer. The
-    writer's graph-to-prose rule says a triple the prose does not support is removed; this
-    is that rule, mechanised, for the one predicate it can be mechanised for. format is
-    paraphrase by design and defaultsTo often is too — neither belongs here.
+    Only for predicates whose value is a verbatim string rather than a paraphrase — the
+    writer's graph-to-prose rule, mechanised for the predicates it can be mechanised for. A
+    paraphrasing predicate must never be listed here: a verbatim-substring check would flag
+    every one of its values, none of them correctly.
 
-    The prose is hard-wrapped, so the comparison collapses runs of whitespace first. Without
-    that, a string straddling a line break reads as ungrounded when it is not.
+    The prose is hard-wrapped, so the comparison collapses runs of whitespace first.
+    Without that, a string straddling a line break reads as ungrounded when it is not.
     """
     from knowledge.graph import load_spec_graph
     from knowledge.paths import spec_md
 
-    empty_state = vocab.term("emptyState")
+    properties = vocab.checks.verbatim_string_properties
+    if not properties:
+        return None
+
     offenders = []
     for spec_id in ids:
         path = spec_md(paths, spec_id)
         if not path.is_file():
             continue
         prose = re.sub(r"\s+", " ", path.read_text(encoding="utf-8"))
-        for subject, literal in load_spec_graph(paths, vocab, spec_id).subject_objects(empty_state):
-            if str(literal) not in prose:
-                offenders.append(
-                    f"{subject} has {vocab.prefix}:emptyState {str(literal)!r},"
-                    f" which no sentence of {spec_id}/spec.md states"
-                )
+        g = load_spec_graph(paths, vocab, spec_id)
+        for name in properties:
+            for subject, literal in g.subject_objects(vocab.term(name)):
+                if str(literal) not in prose:
+                    offenders.append(
+                        f"{subject} has {vocab.prefix}:{name} {str(literal)!r},"
+                        f" which no sentence of {spec_id}/spec.md states"
+                    )
     return sorted(offenders)
 
 
-def locally_redeclared_concepts(paths: Paths, vocab: Vocabulary, ids) -> list[str]:
-    """A concept declared once on the `concepts` spec and referenced everywhere else is
-    what turns independent specs into one connected graph. Declaring it again on some other
-    spec is the same fact twice, free to drift apart from the original."""
+def locally_redeclared_concepts(paths: Paths, vocab: Vocabulary, ids) -> list[str] | None:
+    """A concept declared once on one spec and referenced everywhere else is what turns
+    independent specs into one connected graph. Declaring it again on some other spec is
+    the same fact twice, free to drift apart from the original."""
     from knowledge.graph import load_spec_graph
 
-    concept = vocab.term("Concept")
+    checks = vocab.checks
+    if not checks.concept_class or not checks.concept_spec:
+        return None
+
+    concept = vocab.term(checks.concept_class)
     offenders = []
     for spec_id in ids:
-        if spec_id == "concepts":
+        if spec_id == checks.concept_spec:
             continue
-        g = load_spec_graph(paths, vocab, spec_id)
-        for term in g.subjects(RDF.type, concept):
-            offenders.append(f"{term} declared on {spec_id!r} instead of concepts")
+        for term in load_spec_graph(paths, vocab, spec_id).subjects(RDF.type, concept):
+            offenders.append(
+                f"{term} declared on {spec_id!r} instead of {checks.concept_spec!r}"
+            )
     return sorted(offenders)

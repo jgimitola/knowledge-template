@@ -171,13 +171,21 @@ def _selected_ids(conn: sqlite3.Connection, paths: Paths, include_drafts: bool) 
     return [spec_id for spec_id in graph.spec_ids(paths) if spec_id in verified]
 
 
-def _check(name: str, items: Sequence[str], ok_message: str, strict: bool) -> bool:
+def _check(name: str, items: Sequence[str] | None, ok_message: str, strict: bool) -> bool:
     """Report one validate check, and say whether it should fail the run.
 
     `name` is the plural noun phrase printed after the count, so the heading reads
     "N <name>:". A clean check prints `ok_message` instead. Only `strict` decides whether
     findings are fatal — the caller passes True for the checks that always are.
+
+    `items is None` means the check has no configuration to run against — a project without
+    a rule class has no rules for `restated_rule_comments` to be about. That is reported as
+    skipped, never as a pass: printing `ok_message` would claim a check ran clean when it
+    never ran at all.
     """
+    if items is None:
+        print(f"skipped (not configured): {name}")
+        return False
     if not items:
         print(ok_message)
         return False
@@ -220,9 +228,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
         _check("predicate(s) used outside their declared domain or range",
                lint.domain_range_violations(g, vocab),
                "every predicate stays inside its declared domain and range", strict),
-        _check("empty-state string(s) no prose states",
-               lint.ungrounded_empty_states(paths, vocab, ids),
-               "every empty state appears in its spec's prose", strict),
+        _check("ungrounded literal(s) no prose states",
+               lint.ungrounded_literals(paths, vocab, ids),
+               "every verbatim string appears in its spec's prose", strict),
     ]
     return 1 if any(failures) else 0
 

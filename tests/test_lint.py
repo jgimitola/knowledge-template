@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from knowledge import graph, lint
 
 
@@ -153,7 +155,7 @@ def test_domain_range_violations_ignores_a_literal_range(repo, config, write_spe
     assert not any("route" in msg for msg in lint.domain_range_violations(g, config.vocabulary))
 
 
-def test_ungrounded_empty_states_flags_a_string_no_sentence_states(repo, config, write_spec):
+def test_ungrounded_literals_flags_a_string_no_sentence_states(repo, config, write_spec):
     write_spec(repo.root, "invented", """\
 app:InventedTable a ex:Section ;
     rdfs:label     "Table"@en ;
@@ -162,21 +164,21 @@ app:InventedTable a ex:Section ;
     ids = graph.spec_ids(repo)
     assert any(
         "InventedTable" in msg and "No rows to show." in msg
-        for msg in lint.ungrounded_empty_states(repo, config.vocabulary, ids)
+        for msg in lint.ungrounded_literals(repo, config.vocabulary, ids)
     )
 
 
-def test_ungrounded_empty_states_accepts_a_string_the_prose_states(repo, config, write_spec):
+def test_ungrounded_literals_accepts_a_string_the_prose_states(repo, config, write_spec):
     write_spec(repo.root, "grounded", """\
 app:GroundedTable a ex:Section ;
     rdfs:label     "Table"@en ;
     ex:emptyState "No workspaces yet." .
 """, prose="With nothing to show the table reads **No workspaces yet.**\n")
     ids = graph.spec_ids(repo)
-    assert lint.ungrounded_empty_states(repo, config.vocabulary, ids) == []
+    assert lint.ungrounded_literals(repo, config.vocabulary, ids) == []
 
 
-def test_ungrounded_empty_states_accepts_a_string_the_prose_hard_wraps(repo, config, write_spec):
+def test_ungrounded_literals_accepts_a_string_the_prose_hard_wraps(repo, config, write_spec):
     """The prose is hard-wrapped at 90 columns, so a literal can straddle a line break. A
     byte-for-byte substring test calls that ungrounded when it is not."""
     write_spec(repo.root, "wrapped", """\
@@ -185,4 +187,52 @@ app:WrappedTable a ex:Section ;
     ex:emptyState "No deductions yet." .
 """, prose="The monthly column is red. With none recorded the section reads **No\ndeductions yet.**\n")
     ids = graph.spec_ids(repo)
-    assert lint.ungrounded_empty_states(repo, config.vocabulary, ids) == []
+    assert lint.ungrounded_literals(repo, config.vocabulary, ids) == []
+
+
+def test_configured_checks_run(repo, config):
+    vocab = config.vocabulary
+    g = graph.load_graph(repo, vocab)
+    assert lint.restated_rule_comments(g, vocab) == []
+    assert lint.naming_violations(g, vocab) == []
+    assert lint.locally_redeclared_concepts(repo, vocab, ["assets", "concepts"]) == []
+    assert lint.ungrounded_literals(repo, vocab, ["assets", "concepts"]) == []
+
+
+def test_unconfigured_checks_return_none_rather_than_passing(repo, config):
+    vocab = replace(config.vocabulary, checks=replace(
+        config.vocabulary.checks,
+        rule_class="",
+        concept_class="",
+        field_class="",
+        verbatim_string_properties=(),
+    ))
+    g = graph.load_graph(repo, vocab)
+    assert lint.restated_rule_comments(g, vocab) is None
+    assert lint.naming_violations(g, vocab) is None
+    assert lint.locally_redeclared_concepts(repo, vocab, ["assets"]) is None
+    assert lint.ungrounded_literals(repo, vocab, ["assets"]) is None
+
+
+def test_underscore_rule_is_separable_from_the_field_pattern(repo, config):
+    """A project may name fields freely but still reserve the underscore, or neither."""
+    vocab = replace(config.vocabulary, checks=replace(
+        config.vocabulary.checks, field_name_pattern="", underscore_reserved=False
+    ))
+    g = graph.load_graph(repo, vocab)
+    assert lint.naming_violations(g, vocab) is None
+
+
+def test_ungrounded_literals_covers_every_configured_property(repo, config, write_spec):
+    write_spec(
+        repo.root,
+        "widgets",
+        'app:Widgets a ex:View ;\n'
+        '    rdfs:label "Widgets"@en ;\n'
+        '    ex:emptyState "Nothing here yet" .\n',
+        "The Widgets screen says nothing about its empty state.\n",
+    )
+    vocab = config.vocabulary
+    offenders = lint.ungrounded_literals(repo, vocab, ["widgets"])
+    assert len(offenders) == 1
+    assert "Nothing here yet" in offenders[0]
