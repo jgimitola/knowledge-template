@@ -260,12 +260,26 @@ def _rewrite_ontology_prefix(
 
 def _reset_metadata(root: Path) -> None:
     """An empty database dumped fresh, so the generated repository starts with no history
-    of specs that are no longer there."""
+    of specs that are no longer there. (Ruling C23.)
+
+    Both `paths.db` and `paths.dump` must go before `db.connect` runs — deleting only the
+    `.db` achieves nothing on its own, because `dump.sql` is the tracked artifact and
+    `db.connect` rebuilds the database from it whenever the database file was just deleted
+    and a dump file is still present (see its own docstring: that reload exists so a pulled
+    dump.sql newer than the local db is picked up, which is exactly what an inherited,
+    checked-in dump.sql looks like here). Deleting only `paths.db` left a generated
+    repository's dump.sql carrying real INSERT rows for specs that no longer exist on disk
+    (Task 10's shipped `.metadata/dump.sql` has one for `example`) — `db.connect` reloaded
+    them into the "fresh" database and `db.save` wrote them right back out unchanged, so
+    `scan` in the generated repository reported `missing 1: example has a row but no
+    files` as the very first thing a new user saw.
+    """
     from knowledge import db
     from knowledge.paths import get_paths
 
     paths = get_paths(root, load_config(root).vocabulary.ontology_file)
     paths.db.unlink(missing_ok=True)
+    paths.dump.unlink(missing_ok=True)
     conn = db.connect(paths)
     db.save(conn, paths)
     conn.close()
