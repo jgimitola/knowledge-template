@@ -8,8 +8,5 @@ build/
 # The database is a build product of dump.sql, which is what git tracks.
 .metadata/knowledge.db
 
-# Scratch for the execution process itself: task briefs, review diffs. Not repository content.
-.superpowers/
-
 # Local worktrees for isolated plan execution.
 .worktrees/
