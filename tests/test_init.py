@@ -30,6 +30,10 @@ def build_template(tmp_path):
     (ontology / "ontology.ttl").write_text(
         "@prefix ex: <https://example.com/ontology#> .\n"
         "@prefix app: <https://example.com/id/> .\n"
+        # Real prefixes, not tokens or placeholders: a real rdflib parse (as
+        # graph.load_graph does) needs rdfs: actually bound, not just present as text.
+        "@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n"
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
         "\n"
         "# Delete anything here that your domain has no use for; ex: is just a starting point.\n"
         "ex:Concept a rdfs:Class ;\n"
@@ -203,3 +207,66 @@ def test_run_reports_only_files_it_actually_changed(tmp_path):
         assert (root / relative).is_file(), f"{relative} was reported rewritten but is gone"
     # VERSION carries no placeholder and nothing touches it — it must not be claimed.
     assert "ontology/VERSION" not in rewritten
+
+
+def test_ontology_instance_prefix_line_matches_the_configured_instances_iri(tmp_path):
+    """The ontology file's `@prefix app: <...>` line must end up pointing at the same IRI
+    `config.vocabulary.instances` does after init — otherwise every individual any spec
+    writes (`app:Something`) parses under the *old* namespace instead. A spec never
+    declares its own prefixes (see graph.turtle_source), so it resolves against whatever
+    the ontology file's own `@prefix app:` line says."""
+    root = build_template(tmp_path)
+    init.run(root, ANSWERS)
+    text = (root / "ontology" / "ontology.ttl").read_text(encoding="utf-8")
+    config = load_config(root)
+    assert f"@prefix app: <{config.vocabulary.instances}> ." in text
+
+
+def test_bare_instance_prefix_usage_is_rewritten_when_the_instance_prefix_changes(tmp_path):
+    """A code-position `app:Term` usage in the ontology file must follow `instance_prefix`
+    to its new name too, not just the IRI on the declaration line."""
+    root = build_template(tmp_path)
+    ontology_path = root / "ontology" / "ontology.ttl"
+    ontology_path.write_text(
+        ontology_path.read_text(encoding="utf-8") + "app:Seed a ex:Concept .\n",
+        encoding="utf-8",
+    )
+    from dataclasses import replace
+    init.run(root, replace(ANSWERS, instance_prefix="ind"))
+    text = ontology_path.read_text(encoding="utf-8")
+    assert "ind:Seed a acme:Concept ." in text
+    assert "app:Seed" not in text
+
+
+def test_a_rewritten_specs_instance_iri_satisfies_is_instance(tmp_path):
+    """Pins the actual consequence, through the real graph-loading pipeline rather than a
+    hand-built URIRef: `graph.turtle_source` concatenates ontology.ttl's `@prefix`
+    declarations with each spec's bare `.ttl` (a spec never declares its own prefixes), so
+    an individual like `app:Widget` in a spec resolves against whichever IRI the ontology
+    file's `@prefix app:` line names. If that line were left pointed at the old namespace,
+    `is_instance()` would return False for every individual any spec ever writes — which is
+    exactly what silently switches off `graph.dangling_terms`' instance half and the
+    underscore half of `lint.naming_violations`, both of which then report clean without
+    having checked. Uses a spec directory other than "example" because `init` deletes that
+    one — the bug would otherwise go unexercised by every other test in this file too."""
+    root = build_template(tmp_path)
+    demo = root / "specs" / "demo"
+    demo.mkdir(parents=True)
+    (demo / "spec.md").write_text("---\nid: demo\n---\n\n# Demo\n", encoding="utf-8")
+    # Written as a person would author it *after* init — using the project's real prefix
+    # (acme:, matching ANSWERS.prefix below), not the shipped default (ex:) the ontology no
+    # longer declares once init has renamed it.
+    (demo / "spec.ttl").write_text(
+        'app:Widget a acme:Concept ;\n    rdfs:label "Widget"@en .\n', encoding="utf-8"
+    )
+    init.run(root, ANSWERS)
+
+    from knowledge import graph
+    from knowledge.paths import get_paths
+
+    config = load_config(root)
+    paths = get_paths(root, config.vocabulary.ontology_file)
+    g = graph.load_graph(paths, config.vocabulary, ["demo"])
+    widget = config.vocabulary.instance("Widget")
+    assert (widget, None, None) in g, "the individual did not parse under the expected IRI at all"
+    assert config.vocabulary.is_instance(widget)
