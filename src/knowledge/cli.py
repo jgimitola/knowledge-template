@@ -7,6 +7,7 @@ commands go through db.save so the tracked dump.sql is always current.
 from __future__ import annotations
 
 import argparse
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -494,7 +495,6 @@ def _render_to(conn, paths: Paths, out_dir: Path, sidebar: Sidebar, *, list_page
 
 
 def cmd_publish(args: argparse.Namespace) -> int:
-    import shutil
     import tempfile
 
     paths, config, conn = open_repo(args)
@@ -630,6 +630,77 @@ def cmd_dep(args: argparse.Namespace) -> int:
     return 0
 
 
+def _prompt(question: str, default: str = "") -> str:
+    suffix = f" [{default}]" if default else ""
+    answer = input(f"{question}{suffix}: ").strip()
+    return answer or default
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    # Deliberately does not go through open_repo: the repository is not configured yet, and
+    # open_repo calls load_config (fine here — init.run does that too) and db.connect, which
+    # would bootstrap .metadata/knowledge.db against the still-unconfigured vocabulary before
+    # init has had a chance to rewrite it.
+    from knowledge import init
+    root = find_root()
+
+    if args.check:
+        remaining = init.remaining_placeholders(root)
+        if remaining:
+            print(f"{len(remaining)} placeholder(s) not substituted:")
+            for entry in remaining:
+                print("  -", entry)
+            return 1
+        print("no placeholders remain")
+        return 0
+
+    name = args.name or _prompt("Project name")
+    if not name:
+        print("a project name is required", file=sys.stderr)
+        return 1
+    base_iri = args.base_iri or _prompt("Base IRI", f"https://{init.slugify(name)}.example/")
+    prefix = args.prefix or _prompt("Turtle prefix", init.slugify(name))
+    answers = init.Answers(
+        project_name=name,
+        base_iri=base_iri,
+        prefix=prefix,
+        instance_prefix=args.instance_prefix or _prompt("Instance prefix", "app"),
+        code_repo=args.code_repo if args.code_repo is not None
+        else _prompt("Code repository path (blank to disable staleness)"),
+        publish_target=args.publish_target or _prompt(
+            "Publish target (none/directory/github-wiki)", "none"
+        ),
+        dependency_preset=args.dependency_preset or _prompt(
+            "Dependency preset (none/nextjs)", "none"
+        ),
+    )
+
+    rewritten = init.run(root, answers)
+    print(f"configured {name}: rewrote {len(rewritten)} file(s)")
+    for relative in rewritten:
+        print("  -", relative)
+
+    skill = root / "integrations" / "code-repo" / ".claude" / "skills" / "knowledge-base"
+    if args.install_skill and answers.code_repo:
+        destination = (
+            (root / answers.code_repo).resolve() / ".claude" / "skills" / "knowledge-base"
+        )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(skill, destination, dirs_exist_ok=True)
+        print(f"installed the reading skill into {destination}")
+    elif skill.is_dir():
+        print(f"\nthe reading skill is at {skill}")
+        print(
+            "copy it into your code repository's .claude/skills/,"
+            " or re-run with --install-skill"
+        )
+
+    remaining = init.remaining_placeholders(root)
+    if remaining:
+        print(f"\nwarning: {len(remaining)} placeholder(s) remain; run `knowledge init --check`")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="knowledge",
@@ -749,6 +820,20 @@ def build_parser() -> argparse.ArgumentParser:
         " (overrides knowledge.toml's publish.out_dir)",
     )
     pub_p.set_defaults(handler=cmd_publish)
+
+    init_p = sub.add_parser("init", help="bind this template to one project")
+    init_p.add_argument("--check", action="store_true",
+                        help="report unsubstituted placeholders and exit non-zero")
+    init_p.add_argument("--name")
+    init_p.add_argument("--base-iri")
+    init_p.add_argument("--prefix")
+    init_p.add_argument("--instance-prefix")
+    init_p.add_argument("--code-repo")
+    init_p.add_argument("--publish-target", choices=["none", "directory", "github-wiki"])
+    init_p.add_argument("--dependency-preset", choices=["none", "nextjs"])
+    init_p.add_argument("--install-skill", action="store_true",
+                        help="copy the reading skill into the code repository")
+    init_p.set_defaults(handler=cmd_init)
 
     return parser
 
