@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from knowledge import db, gitcmd, graph, scan
-from knowledge.config import Config, load_config
+from knowledge.config import Config, Sidebar, load_config
 from knowledge.paths import Paths, find_root, get_paths
 
 VERSION = "0.1.0"
@@ -470,6 +470,29 @@ def _clear_markdown(out_dir: Path) -> list[str]:
     return removed
 
 
+def _render_to(conn, paths: Paths, out_dir: Path, sidebar: Sidebar, *, list_pages: bool) -> int:
+    """Render every published spec into out_dir, clearing pages that no longer have a spec.
+
+    Shared by --dry-run and the directory target: both render locally and push nothing, so
+    a difference between them could only ever be a bug — round 1 of this task's review found
+    exactly that, when the directory target was missing the clear-and-report half dry-run
+    already had. One implementation means there is nothing left to keep in sync by hand.
+    """
+    from knowledge import publish
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    existing = set(_clear_markdown(out_dir))
+    written = publish.write_pages(conn, paths, out_dir, sidebar)
+    print(f"{len(written)} page(s) written to {out_dir}")
+    if list_pages:
+        for name in sorted(written):
+            print("   ", name)
+    stale = sorted(existing - set(written))
+    if stale:
+        print(f"{len(stale)} stale page(s) removed: {', '.join(stale)}")
+    return 0
+
+
 def cmd_publish(args: argparse.Namespace) -> int:
     import shutil
     import tempfile
@@ -483,16 +506,7 @@ def cmd_publish(args: argparse.Namespace) -> int:
     # they have decided (or configured) where it would go.
     if args.dry_run:
         out = Path(args.output) if args.output else paths.root / "build" / "wiki"
-        out.mkdir(parents=True, exist_ok=True)
-        existing = set(_clear_markdown(out))
-        written = publish.write_pages(conn, paths, out, config.publish.sidebar)
-        print(f"{len(written)} page(s) written to {out}")
-        for name in sorted(written):
-            print("   ", name)
-        stale = sorted(existing - set(written))
-        if stale:
-            print(f"{len(stale)} stale page(s) removed: {', '.join(stale)}")
-        return 0
+        return _render_to(conn, paths, out, config.publish.sidebar, list_pages=True)
 
     target = config.publish.target
     if target == "none":
@@ -518,18 +532,9 @@ def cmd_publish(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        out_dir = Path(raw_out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        # Same reason the dry-run and github-wiki paths both clear first: a directory publish
-        # is a standing output a reader opens later and trusts. A renamed or dropped spec has
-        # to actually lose its stale page, not leave one sitting there looking current.
-        existing = set(_clear_markdown(out_dir))
-        written = publish.write_pages(conn, paths, out_dir, config.publish.sidebar)
-        print(f"{len(written)} page(s) written to {out_dir}")
-        stale = sorted(existing - set(written))
-        if stale:
-            print(f"{len(stale)} stale page(s) removed: {', '.join(stale)}")
-        return 0
+        return _render_to(
+            conn, paths, Path(raw_out_dir), config.publish.sidebar, list_pages=False
+        )
 
     workdir = Path(tempfile.mkdtemp(prefix="knowledge-wiki-"))
     try:
