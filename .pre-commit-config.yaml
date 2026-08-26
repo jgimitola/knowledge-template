@@ -1,0 +1,33 @@
+repos:
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier --write
+        language: node
+        additional_dependencies: ["prettier@3.9.5"]
+        entry: prettier --write --ignore-unknown
+        types_or: [markdown, yaml]
+
+      - id: prettier-check
+        name: prettier --check (pre-push)
+        language: node
+        additional_dependencies: ["prettier@3.9.5"]
+        entry: prettier --check
+        types_or: [markdown, yaml]
+        stages: [pre-push]
+
+      - id: pytest
+        name: pytest
+        entry: uv run pytest -v
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      - id: knowledge-validate
+        name: knowledge scan + validate --strict
+        entry: bash -c "uv run knowledge scan && uv run knowledge validate --strict"
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

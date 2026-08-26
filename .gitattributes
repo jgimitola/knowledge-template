@@ -1,0 +1,4 @@
+# Line endings are normalised to LF in the repository. A later task's CI runs
+# `git diff --exit-code .metadata/dump.sql` on Linux; without this, a dump written on
+# Windows would differ from the same dump written in CI on every single run.
+* text=auto eol=lf
