@@ -71,7 +71,7 @@ The hooks ship with the template but are inert until you install them, once:
 uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
 
-There are four, and each of the last three exists to make the one before it true:
+Each exists to make the tool check itself where a check cannot be skipped:
 
 - **`prettier --write`** (pre-commit) formats Markdown and YAML with `proseWrap: preserve`,
   because specs are hand-wrapped prose and rewrapping would turn a one-line edit into a
@@ -80,9 +80,11 @@ There are four, and each of the last three exists to make the one before it true
   skipped.
 - **`pytest`** (pre-push) guards the tooling, which you are invited to edit. A user who never
   touches `src/` is the one who can safely drop this hook.
-- **`knowledge scan && validate --strict`** (pre-push) is the same check the writer agent is
-  told to pass, run where it cannot be bypassed — no spec reaches the remote with an invented
-  term, a broken reference or an ungrounded literal.
+- **`knowledge scan`** then **`knowledge validate --strict`** (pre-push) are the same check
+  the writer agent is told to pass, run where it cannot be bypassed — no spec reaches the
+  remote with an invented term, a broken reference or an ungrounded literal. They are two
+  separate hooks (scan runs first) so no `bash` is required, which keeps the pre-push gate
+  working on Windows.
 
 `.gitattributes` normalises every file to LF because `.metadata/dump.sql` is a byte-compared
 artifact a Windows author and a Linux runner would otherwise write differently on every run;

@@ -24,9 +24,17 @@ repos:
         always_run: true
         stages: [pre-push]
 
+      - id: knowledge-scan
+        name: knowledge scan
+        entry: uv run knowledge scan
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
       - id: knowledge-validate
-        name: knowledge scan + validate --strict
-        entry: bash -c "uv run knowledge scan && uv run knowledge validate --strict"
+        name: knowledge validate --strict
+        entry: uv run knowledge validate --strict
         language: system
         pass_filenames: false
         always_run: true
