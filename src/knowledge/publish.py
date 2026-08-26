@@ -1,8 +1,9 @@
 """Render specs into wiki pages and push them.
 
 Turtle is not inlined: the wiki carries prose, and the graph is available as an exported
-artifact. Only _Sidebar.md is generated — Home carries the product description and its own
-mon:Actor declarations, so it stays an ordinary spec and publishes like any other page.
+artifact. Only _Sidebar.md is generated — Home carries the project description and whatever
+vocabulary declarations its own spec.ttl holds, so it stays an ordinary spec and publishes
+like any other page.
 """
 
 from __future__ import annotations
@@ -11,70 +12,11 @@ import re
 from pathlib import Path
 
 from knowledge import gitcmd
+from knowledge.config import Sidebar
 from knowledge.graph import page_name
 from knowledge.paths import Paths
 
 FRONTMATTER = re.compile(r"\A---\n.*?\n---\n\s*", re.S)
-
-# Reading order, not alphabetical. Anything not named here is appended alphabetically, so a
-# new spec appears in the sidebar without this list having to be edited first.
-SIDEBAR_ORDER = [
-    "home",
-    "concepts",
-    "onboarding",
-    "onboarding-landing",
-    "onboarding-workspace",
-    "onboarding-welcome",
-    "profile",
-    "profile-account",
-    "profile-password",
-    "profile-workspaces",
-    "profile-categories",
-    "profile-settings",
-    "assets",
-    "incomes",
-    "incomes-detail",
-    "expenses",
-    "expenses-calendar",
-    "expenses-log",
-    "expenses-plan",
-    "loans-out",
-]
-
-# Filed under **Reference** rather than the module list: contributor documentation about the
-# codebase, not something the product does. Ontology has no spec row of its own — it renders
-# from ontology/README.md — so it is emitted directly, ahead of anything named here; every
-# entry in this list must be an actual spec id so it can carry its own title.
-SIDEBAR_REFERENCE = ["architecture"]
-
-# A page's title is usually the right nav label. Home is the exception: its H1 is the
-# product name, which says nothing in a sidebar that is already the product's wiki.
-SIDEBAR_LABELS = {"home": "Home"}
-
-# A bold section header inserted right before the named spec's entry, so the grouping
-# survives a reordering of SIDEBAR_ORDER instead of being pinned to a hardcoded index.
-SIDEBAR_HEADER_BEFORE = {"onboarding": "Modules"}
-
-# The retired wiki-sync.yml workflow's committer identity, kept so the wiki's history doesn't
-# suddenly change authors. A fresh clone has no local identity, and CI runners frequently have
-# none globally either, so this is set on the clone itself rather than assumed.
-BOT_NAME = "github-actions[bot]"
-BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
-
-NESTED_UNDER = {
-    "onboarding-landing": "onboarding",
-    "onboarding-workspace": "onboarding",
-    "onboarding-welcome": "onboarding",
-    "profile-account": "profile",
-    "profile-password": "profile",
-    "profile-workspaces": "profile",
-    "profile-categories": "profile",
-    "profile-settings": "profile",
-    "incomes-detail": "incomes",
-    "expenses-calendar": "expenses",
-    "expenses-log": "expenses",
-    "expenses-plan": "expenses",
-}
 
 
 def strip_frontmatter(text: str) -> str:
@@ -105,34 +47,33 @@ def _published(conn) -> list[tuple[str, str, str]]:
     ))
 
 
-def render_sidebar(conn) -> str:
+def render_sidebar(conn, sidebar: Sidebar) -> str:
     rows = {spec_id: (title, page) for spec_id, title, page in _published(conn)}
-    reference = set(SIDEBAR_REFERENCE)
-    ordered = [s for s in SIDEBAR_ORDER if s in rows and s not in reference]
-    ordered += sorted(s for s in rows if s not in SIDEBAR_ORDER and s not in reference)
+    reference = set(sidebar.reference)
+    ordered = [s for s in sidebar.order if s in rows and s not in reference]
+    ordered += sorted(s for s in rows if s not in sidebar.order and s not in reference)
 
-    lines = ["### Monicords", ""]
+    lines = [f"### {sidebar.title}", ""] if sidebar.title else []
     for spec_id in ordered:
-        header = SIDEBAR_HEADER_BEFORE.get(spec_id)
+        header = sidebar.header_before.get(spec_id)
         if header:
             lines += ["", f"**{header}**", ""]
         title, page = rows[spec_id]
-        label = SIDEBAR_LABELS.get(spec_id, title)
-        indent = "  " if spec_id in NESTED_UNDER else ""
+        label = sidebar.labels.get(spec_id, title)
+        indent = "  " if spec_id in sidebar.nested_under else ""
         lines.append(f"{indent}- [{label}]({page})")
 
     lines += ["", "**Reference**", "", "- [Ontology](Ontology)"]
-    for spec_id in SIDEBAR_REFERENCE:
+    for spec_id in sidebar.reference:
         if spec_id not in rows:
             continue
         title, page = rows[spec_id]
-        label = SIDEBAR_LABELS.get(spec_id, title)
-        lines.append(f"- [{label}]({page})")
+        lines.append(f"- [{sidebar.labels.get(spec_id, title)}]({page})")
     lines.append("")
     return "\n".join(lines)
 
 
-def write_pages(conn, paths: Paths, out_dir: Path) -> list[str]:
+def write_pages(conn, paths: Paths, out_dir: Path, sidebar: Sidebar) -> list[str]:
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
     for spec_id, _title, page in _published(conn):
@@ -161,23 +102,27 @@ def write_pages(conn, paths: Paths, out_dir: Path) -> list[str]:
     )
     written.append("Ontology.md")
 
-    (out_dir / "_Sidebar.md").write_text(render_sidebar(conn), encoding="utf-8", newline="\n")
+    (out_dir / "_Sidebar.md").write_text(
+        render_sidebar(conn, sidebar), encoding="utf-8", newline="\n"
+    )
     written.append("_Sidebar.md")
     return written
 
 
-def push(out_dir: Path, remote: str, message: str) -> bool:
+def push(
+    out_dir: Path, remote: str, message: str, committer_name: str, committer_email: str
+) -> bool:
     """Returns True when something was pushed, False when the wiki was already current.
 
     Raises subprocess.CalledProcessError on any git failure; the caller is responsible for
     turning that into a clean CLI error rather than a traceback.
     """
     gitcmd.run(
-        ["-C", str(out_dir), "config", "user.name", BOT_NAME],
+        ["-C", str(out_dir), "config", "user.name", committer_name],
         check=True, capture_output=True, text=True,
     )
     gitcmd.run(
-        ["-C", str(out_dir), "config", "user.email", BOT_EMAIL],
+        ["-C", str(out_dir), "config", "user.email", committer_email],
         check=True, capture_output=True, text=True,
     )
     gitcmd.run(

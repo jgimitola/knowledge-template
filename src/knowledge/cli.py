@@ -477,11 +477,39 @@ def cmd_publish(args: argparse.Namespace) -> int:
     paths, config, conn = open_repo(args)
     from knowledge import publish
 
+    target = config.publish.target
+    if target == "none":
+        # "none" is the shipped default. A freshly-templated repository has no wiki, no
+        # publish directory — nothing this tooling could safely guess — so it refuses to
+        # publish rather than picking a destination (e.g. assuming github-wiki) that the
+        # project never asked for.
+        print(
+            "publishing is not configured — set publish.target in knowledge.toml"
+            " to 'directory' or 'github-wiki'",
+            file=sys.stderr,
+        )
+        return 1
+    if target == "directory":
+        # Emptiness is checked on the raw string, before it becomes a Path: Path("")
+        # normalises to Path("."), whose str() is "." — truthy — so the same check made
+        # after wrapping in Path could never fire.
+        raw_out_dir = args.out_dir or config.publish.out_dir
+        if not raw_out_dir:
+            print(
+                "publish.out_dir is required when publish.target is 'directory'",
+                file=sys.stderr,
+            )
+            return 1
+        out_dir = Path(raw_out_dir)
+        written = publish.write_pages(conn, paths, out_dir, config.publish.sidebar)
+        print(f"{len(written)} page(s) written to {out_dir}")
+        return 0
+
     if args.dry_run:
         out = Path(args.output) if args.output else paths.root / "build" / "wiki"
         out.mkdir(parents=True, exist_ok=True)
         existing = set(_clear_markdown(out))
-        written = publish.write_pages(conn, paths, out)
+        written = publish.write_pages(conn, paths, out, config.publish.sidebar)
         print(f"{len(written)} page(s) written to {out}")
         for name in sorted(written):
             print("   ", name)
@@ -509,10 +537,14 @@ def cmd_publish(args: argparse.Namespace) -> int:
             return 1
 
         _clear_markdown(clone)
-        written = publish.write_pages(conn, paths, clone)
+        written = publish.write_pages(conn, paths, clone, config.publish.sidebar)
         try:
             pushed = publish.push(
-                clone, config.publish.remote, f"docs: sync {len(written)} page(s)"
+                clone,
+                config.publish.remote,
+                f"docs: sync {len(written)} page(s)",
+                config.publish.committer_name,
+                config.publish.committer_email,
             )
         except subprocess.CalledProcessError as exc:
             print("error: could not push to the wiki repository")
@@ -680,6 +712,11 @@ def build_parser() -> argparse.ArgumentParser:
     pub_p = sub.add_parser("publish", help="render the specs and push them to the wiki")
     pub_p.add_argument("--dry-run", action="store_true", help="write locally, do not push")
     pub_p.add_argument("-o", "--output", help="where --dry-run writes (default build/wiki)")
+    pub_p.add_argument(
+        "--out-dir",
+        help="where to write pages when publish.target is 'directory'"
+        " (overrides knowledge.toml's publish.out_dir)",
+    )
     pub_p.set_defaults(handler=cmd_publish)
 
     return parser

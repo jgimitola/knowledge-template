@@ -134,6 +134,14 @@ def write_spec():
     return _write_spec
 
 
+@pytest.fixture
+def seeded_conn(repo):
+    from knowledge import db, scan
+    conn = db.connect(repo)
+    scan.scan(conn, repo)
+    return conn
+
+
 # A separate template from CONFIG_TOML above: knowledge.toml's [repo]/[publish] values
 # overridden for one test, with the rest of the vocabulary/dependencies configuration a
 # working repository still needs. Kept distinct from the fixture ontology's namespace/prefix
@@ -168,13 +176,23 @@ endpoint_glob = "app/{{path}}/**/route.ts"
 absorbed_prefixes = ["platform"]
 
 [publish]
+target = "{target}"
 remote = "{remote}"
+out_dir = "{out_dir}"
 """
 
 
-def write_knowledge_toml(root, *, code_repo="../code", remote="https://example.com/x.wiki.git"):
+def write_knowledge_toml(
+    root,
+    *,
+    code_repo="../code",
+    remote="https://example.com/x.wiki.git",
+    target="github-wiki",
+    out_dir="",
+):
     (root / "knowledge.toml").write_text(
-        KNOWLEDGE_TOML.format(code_repo=code_repo, remote=remote), encoding="utf-8"
+        KNOWLEDGE_TOML.format(code_repo=code_repo, remote=remote, target=target, out_dir=out_dir),
+        encoding="utf-8",
     )
     return root
 

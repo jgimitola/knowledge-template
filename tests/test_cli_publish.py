@@ -93,3 +93,62 @@ def test_publish_skips_a_spec_whose_folder_is_gone_instead_of_crashing(working, 
     assert "knowledge forget" in printed
     assert not (out / "Concepts.md").exists()
     assert (out / "Assets.md").is_file()
+
+
+def test_publish_target_none_fails_with_a_readable_message_instead_of_a_traceback(
+    working, capsys
+):
+    """'none' is the shipped default — a template cannot know where its user publishes, and
+    guessing a destination is worse than requiring one. This must be a clean, actionable
+    error, not an attempt to clone an empty remote."""
+    write_knowledge_toml(working.root, target="none")
+
+    args = run(["publish"])
+    exit_code = args.handler(args)
+
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "publish.target" in err
+    assert "directory" in err
+    assert "github-wiki" in err
+
+
+def test_publish_directory_target_writes_pages_without_pushing(working, tmp_path, capsys):
+    out = tmp_path / "docs-out"
+    write_knowledge_toml(working.root, target="directory", out_dir=out.as_posix())
+
+    args = run(["publish"])
+    exit_code = args.handler(args)
+
+    assert exit_code == 0
+    assert (out / "Assets.md").is_file()
+    printed = capsys.readouterr().out
+    assert "page(s) written to" in printed
+    assert out.name in printed
+
+
+def test_publish_directory_target_out_dir_flag_overrides_the_config(working, tmp_path, capsys):
+    configured = tmp_path / "cfg-out"
+    write_knowledge_toml(working.root, target="directory", out_dir=configured.as_posix())
+    cli_out = tmp_path / "cli-out"
+
+    args = run(["publish", "--out-dir", str(cli_out)])
+    exit_code = args.handler(args)
+
+    assert exit_code == 0
+    assert (cli_out / "Assets.md").is_file()
+    assert not configured.exists()
+
+
+def test_publish_directory_target_without_an_out_dir_fails_cleanly(working, capsys):
+    """Regression guard for a `Path("")` trap: `Path("")` normalises to `Path(".")`, whose
+    `str()` is `"."` — truthy — so checking emptiness *after* wrapping in `Path` can never
+    catch a missing out_dir. The check has to happen on the raw string first."""
+    write_knowledge_toml(working.root, target="directory")
+
+    args = run(["publish"])
+    exit_code = args.handler(args)
+
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "publish.out_dir is required" in err
