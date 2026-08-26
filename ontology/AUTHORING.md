@@ -93,13 +93,34 @@ finds `?child` whichever direction the spec's author happened to assert.
 
 The seed's `ex:constrains` declares `rdfs:domain ex:Rule` and no `rdfs:range` at all, and its
 comment explains why: _"the values span more than one type, and two ranges would be read as
-requiring both at once."_ That is RDFS semantics, not a stylistic choice — RDFS treats two
-`rdfs:range` triples on the same property as two independent constraints that both apply, so
-`web:modifies rdfs:domain web:Action ; rdfs:range web:Field, web:Concept` would not mean "a `Field` or a `Concept`", it
-would mean every value must be a `Field` _and_ a `Concept` simultaneously. No individual is
-ever both, so `lint.domain_range_violations` would flag every single assertion of the
-property as wrong — the check would be permanently red, for a property that was never
-actually misused.
+requiring both at once."_ That is real RDFS semantics — under a reasoner, two `rdfs:range`
+triples on the same property are two constraints that both hold, so a fully-entailed value
+would need to be a member of the intersection of both classes, not either one.
+
+But `lint.domain_range_violations` is not a reasoner, and the mistake to avoid is assuming it
+enforces that intersection. It does not — it builds the declared ranges into a set and flags
+an assertion only when the object's _actual_ type shares nothing with that set:
+
+```turtle
+ex:touches a rdf:Property ; rdfs:range ex:Field, ex:Concept .
+
+app:X a ex:Field ;   ex:touches app:F .   # app:F typed only ex:Field
+app:Y a ex:Field ;   ex:touches app:C .   # app:C typed only ex:Concept
+```
+
+```
+domain_range_violations(...) -> []
+```
+
+Neither assertion is flagged: `app:F`'s type (`Field`) intersects the declared range set, and
+so does `app:C`'s (`Concept`) — each individually satisfies _some_ member of the set, which is
+enough for the checker's set-intersection test to pass. Two ranges do not turn the check red;
+they make it permissive. It silently accepts anything typed as either declared class, and a
+reader looking only at the ontology (not this checker's source) has every reason to expect the
+stricter, textbook reading — both at once — and be surprised when nothing actually enforces
+it. That gap between what `rdfs:range Field, Concept` looks like it promises and what the
+checker actually lets through is the real argument for leaving the range off: a declared range
+that does not mean what a reader assumes it means is worse than no declared range at all.
 
 The fix is to declare no `rdfs:range` at all, and say in `rdfs:comment` what the property
 actually allows, in prose a reader can act on but the checker leaves alone:
