@@ -153,6 +153,25 @@ def test_contradictions_reports_none_on_a_clean_graph(seeded, capsys):
     assert "no mechanical contradictions found" in capsys.readouterr().out
 
 
+def test_contradictions_summary_accounts_for_skipped_checks(seeded, capsys):
+    """With every configurable check unconfigured, only dangling_terms actually ran. The
+    summary must not read as a verdict on the checks that were skipped."""
+    toml_path = seeded.root / "knowledge.toml"
+    text = toml_path.read_text(encoding="utf-8")
+    text = text.replace('concept_class = "Concept"\nconcept_spec = "concepts"\n', "")
+    text = text.replace(
+        'functional_properties = ["route", "editable", "required", "viewport", "defaultsTo"]\n',
+        "",
+    )
+    toml_path.write_text(text, encoding="utf-8")
+
+    args = run(["contradictions", "--include-drafts"])
+    assert args.handler(args) == 0
+    out = capsys.readouterr().out
+    assert "no mechanical contradictions found" not in out
+    assert "2 skipped" in out
+
+
 def test_contradictions_reports_a_functional_conflict(seeded, write_spec, capsys):
     write_spec(seeded.root, "duplicate-route",
                'app:Assets a ex:View ; ex:route "/somewhere-else" .\n')

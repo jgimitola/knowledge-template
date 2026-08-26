@@ -293,9 +293,11 @@ def cmd_contradictions(args: argparse.Namespace) -> int:
     ids = _selected_ids(conn, paths, args.include_drafts)
     g = graph.load_graph(paths, vocab, ids)
     found = False
+    skipped = 0
 
     conflicts = contradictions.functional_conflicts(g, vocab)
     if conflicts is None:
+        skipped += 1
         print("skipped (not configured): functional-property conflicts")
     elif conflicts:
         found = True
@@ -313,6 +315,7 @@ def cmd_contradictions(args: argparse.Namespace) -> int:
 
     redeclared = lint.locally_redeclared_concepts(paths, vocab, ids)
     if redeclared is None:
+        skipped += 1
         print("skipped (not configured): locally redeclared concepts")
     elif redeclared:
         found = True
@@ -321,7 +324,13 @@ def cmd_contradictions(args: argparse.Namespace) -> int:
             print("  -", msg)
 
     if not found:
-        print("no mechanical contradictions found")
+        if skipped:
+            print(
+                f"no contradictions found by the checks that ran"
+                f" ({skipped} skipped — see above)"
+            )
+        else:
+            print("no mechanical contradictions found")
     return 0
 
 
