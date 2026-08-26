@@ -420,18 +420,6 @@ def cmd_verify(args: argparse.Namespace) -> int:
 def cmd_stale(args: argparse.Namespace) -> int:
     paths, config, conn = open_repo(args)
     from knowledge import deps
-    # deps.check raises RuntimeError for the same condition, which main_argv would turn
-    # into an equivalent "error: ..." line — but that message is written for library
-    # callers, not this command's output. Guarding here means `stale` fails with its own
-    # clean, dedicated message before doing any of the git work, rather than borrowing
-    # deps.check's wording as a side effect of exception propagation.
-    if config.code_repo is None and not getattr(args, "code_repo", None):
-        print(
-            "no code repository configured — set repo.code_repo in knowledge.toml,"
-            " or pass --code-repo",
-            file=sys.stderr,
-        )
-        return 1
     override = Path(args.code_repo).resolve() if args.code_repo else None
     try:
         findings = deps.check(conn, paths, config, demote=args.demote, code_repo=override)

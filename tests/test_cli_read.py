@@ -180,7 +180,13 @@ def test_contradictions_reports_a_functional_conflict(seeded, write_spec, capsys
     assert "route" in capsys.readouterr().out
 
 
-def test_stale_without_a_configured_code_repo_fails_clearly(repo, capsys, monkeypatch):
+def test_stale_surfaces_deps_checks_missing_code_repo_error(repo, capsys, monkeypatch):
+    """cmd_stale has no guard of its own for this — deps.check raises RuntimeError when
+    neither config.code_repo nor --code-repo is set, and main_argv's except clause turns
+    that into the "error: ..." line asserted below. Delete deps.check's own
+    `if root is None: raise` and this fails (exit 0, "nothing has gone stale" instead),
+    which is what makes this test genuinely test that guard rather than duplicate one in
+    the CLI layer that would pass identically either way."""
     from knowledge import cli
     (repo.root / "knowledge.toml").write_text(
         (repo.root / "knowledge.toml").read_text(encoding="utf-8").replace(
@@ -190,7 +196,9 @@ def test_stale_without_a_configured_code_repo_fails_clearly(repo, capsys, monkey
     )
     monkeypatch.chdir(repo.root)
     assert cli.main_argv(["stale"]) == 1
-    assert "no code repository configured" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert err.startswith("error: ")
+    assert "no code repository configured" in err
 
 
 def test_the_parser_description_names_no_project(capsys):
