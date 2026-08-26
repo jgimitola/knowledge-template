@@ -30,3 +30,23 @@ def test_the_example_ontology_is_not_loaded():
     paths = get_paths(ROOT, "ontology.ttl")
     assert "webapp" not in turtle_source(paths, ["example"])
     assert "Module" not in turtle_source(paths, ["example"])
+
+
+AGENT_FILES = (
+    ".claude/agents/interviewer.md",
+    ".claude/agents/writer.md",
+    "integrations/code-repo/.claude/skills/knowledge-base/SKILL.md",
+)
+
+
+def test_the_agents_name_no_project():
+    for relative in AGENT_FILES:
+        text = (ROOT / relative).read_text(encoding="utf-8").lower()
+        assert "monicords" not in text, relative
+        assert "app:workspace" not in text, relative
+
+
+def test_the_agents_are_all_in_the_init_manifest():
+    from knowledge.init import MANIFEST
+    for relative in AGENT_FILES:
+        assert relative in MANIFEST, relative
