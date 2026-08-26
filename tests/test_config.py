@@ -123,3 +123,29 @@ def test_dynamic_segment_alternative_delimiters_are_accepted(tmp_path, segment):
     text = MINIMAL + f'\n[dependencies]\ndynamic_segment = "{segment}"\n'
     config = load_config(write(tmp_path, text))
     assert config.dependencies.dynamic_segment == segment
+
+
+def test_route_glob_without_the_segments_token_is_rejected(tmp_path):
+    text = MINIMAL + '\n[dependencies]\nroute_glob = "app/page.tsx"\n'
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, text))
+    assert "dependencies.route_glob" in str(exc.value)
+    assert "app/page.tsx" in str(exc.value)
+
+
+def test_empty_route_glob_still_loads(tmp_path):
+    config = load_config(write(tmp_path, MINIMAL))
+    assert config.dependencies.route_glob == ""
+
+
+def test_endpoint_glob_without_the_path_token_is_rejected(tmp_path):
+    text = MINIMAL + '\n[dependencies]\nendpoint_glob = "app/api/route.ts"\n'
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, text))
+    assert "dependencies.endpoint_glob" in str(exc.value)
+    assert "app/api/route.ts" in str(exc.value)
+
+
+def test_empty_endpoint_glob_still_loads(tmp_path):
+    config = load_config(write(tmp_path, MINIMAL))
+    assert config.dependencies.endpoint_glob == ""

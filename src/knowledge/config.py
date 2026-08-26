@@ -148,11 +148,23 @@ def _dependencies(data: dict) -> Dependencies:
             f"knowledge.toml: dependencies.dynamic_segment is {dynamic_segment!r};"
             " it must contain '...' to mark where the segment name goes (e.g. '{...}', '<...>')"
         )
+    route_glob = _clean(table.get("route_glob"))
+    if route_glob and "{segments}" not in route_glob:
+        raise ConfigError(
+            f"knowledge.toml: dependencies.route_glob is {route_glob!r};"
+            " it must contain '{segments}' to mark where the route's path segments go"
+        )
+    endpoint_glob = _clean(table.get("endpoint_glob"))
+    if endpoint_glob and "{path}" not in endpoint_glob:
+        raise ConfigError(
+            f"knowledge.toml: dependencies.endpoint_glob is {endpoint_glob!r};"
+            " it must contain '{path}' to mark where the endpoint's path goes"
+        )
     return Dependencies(
         route_property=_clean(table.get("route_property")),
         endpoint_property=_clean(table.get("endpoint_property")),
-        route_glob=_clean(table.get("route_glob")),
-        endpoint_glob=_clean(table.get("endpoint_glob")),
+        route_glob=route_glob,
+        endpoint_glob=endpoint_glob,
         absorbed_prefixes=tuple(table.get("absorbed_prefixes", ())),
         dynamic_segment=dynamic_segment,
         dynamic_replacement=_clean(table.get("dynamic_replacement")) or "*",
