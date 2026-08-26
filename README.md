@@ -58,13 +58,13 @@ Then read [docs/GUIDE.md](docs/GUIDE.md) and design your vocabulary with
 Everything project-specific lives in `knowledge.toml`:
 
 | Section          | What it decides                                                       |
-| ---------------- | -------------------------------------------------------------------- |
-| `[project]`      | The project's name.                                                  |
+| ---------------- | --------------------------------------------------------------------- |
+| `[project]`      | The project's name.                                                   |
 | `[vocabulary]`   | Namespaces, prefixes, and which terms each mechanical check is about. |
-| `[[ask]]`        | Named SPARQL surveys for the questions you ask often.                |
-| `[repo]`         | Where the code repository lives, for staleness tracking.             |
-| `[dependencies]` | How a route or endpoint becomes a file glob (optional).              |
-| `[publish]`      | Where and how pages publish, and how the sidebar is ordered.         |
+| `[[ask]]`        | Named SPARQL surveys for the questions you ask often.                 |
+| `[repo]`         | Where the code repository lives, for staleness tracking.              |
+| `[dependencies]` | How a route or endpoint becomes a file glob (optional).               |
+| `[publish]`      | Where and how pages publish, and how the sidebar is ordered.          |
 
 A check whose configuration is empty is reported as `skipped (not configured)` — never as a
 pass it did not earn.

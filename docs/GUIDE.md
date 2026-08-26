@@ -100,29 +100,29 @@ recipe is a decision offered. The three workflows are documented in
 
 ### Reading
 
-| Command                         | What it does                                       |
-| ------------------------------- | -------------------------------------------------- |
-| `knowledge list`                | The specs that exist, and their status.            |
-| `knowledge show <id>`           | Everything one spec says (prose and graph).        |
+| Command                            | What it does                                     |
+| ---------------------------------- | ------------------------------------------------ |
+| `knowledge list`                   | The specs that exist, and their status.          |
+| `knowledge show <id>`              | Everything one spec says (prose and graph).      |
 | `knowledge describe <prefix:Node>` | Every triple touching one node, drafts included. |
-| `knowledge query "<SPARQL>"`    | An answer computed across the verified graph.      |
-| `knowledge ask`                 | The configured `[[ask]]` surveys.                  |
-| `knowledge graph <file>`        | Write the graph to a `.ttl` file.                  |
-| `knowledge contradictions`      | Mechanical contradictions in the graph.            |
-| `knowledge questions`           | Open questions blocking verification.              |
-| `knowledge stale`               | Verified specs whose code has changed.             |
-| `knowledge dep list <id>`       | A spec's manually recorded dependencies.           |
+| `knowledge query "<SPARQL>"`       | An answer computed across the verified graph.    |
+| `knowledge ask`                    | The configured `[[ask]]` surveys.                |
+| `knowledge graph <file>`           | Write the graph to a `.ttl` file.                |
+| `knowledge contradictions`         | Mechanical contradictions in the graph.          |
+| `knowledge questions`              | Open questions blocking verification.            |
+| `knowledge stale`                  | Verified specs whose code has changed.           |
+| `knowledge dep list <id>`          | A spec's manually recorded dependencies.         |
 
 ### Authoring
 
-| Command                                    | What it does                                   |
-| ------------------------------------------ | ---------------------------------------------- |
-| `knowledge new <id> --title "<Title>"`     | Scaffold `specs/<id>/`.                        |
-| `knowledge scan`                           | Reconcile spec files against the database.     |
-| `knowledge model <id> --claim <prefix:IRI>` | Record the writer's audit of the graph.       |
-| `knowledge ask-question <id> "<Q>"`        | Open a question against a spec.                 |
-| `knowledge answer <id> ...`                | Answer an open question.                        |
-| `knowledge verify <id> --by <name>`        | Confirm a spec is true (a human act).           |
-| `knowledge forget ...`                     | Prune a question or claim, logged in the event log. |
-| `knowledge publish`                        | Render the specs and publish them.              |
-| `knowledge init`                           | Bind this template to one project (run once).   |
+| Command                                     | What it does                                        |
+| ------------------------------------------- | --------------------------------------------------- |
+| `knowledge new <id> --title "<Title>"`      | Scaffold `specs/<id>/`.                             |
+| `knowledge scan`                            | Reconcile spec files against the database.          |
+| `knowledge model <id> --claim <prefix:IRI>` | Record the writer's audit of the graph.             |
+| `knowledge ask-question <id> "<Q>"`         | Open a question against a spec.                     |
+| `knowledge answer <id> ...`                 | Answer an open question.                            |
+| `knowledge verify <id> --by <name>`         | Confirm a spec is true (a human act).               |
+| `knowledge forget ...`                      | Prune a question or claim, logged in the event log. |
+| `knowledge publish`                         | Render the specs and publish them.                  |
+| `knowledge init`                            | Bind this template to one project (run once).       |

@@ -18,29 +18,29 @@ graph to query. They are parsed together with the ontology into one graph.
 
 ## Reading the knowledge base
 
-| You want                                  | Command                          |
-| ----------------------------------------- | -------------------------------- |
-| The specs that exist, and their status    | `knowledge list`                |
-| Everything one spec says                  | `knowledge show <id>`            |
-| Every triple touching one node            | `knowledge describe <prefix:Node>` |
-| An answer across the whole graph          | `knowledge query "<SPARQL>"`     |
-| A preset survey                           | `knowledge ask`                  |
-| Contradictions in the graph               | `knowledge contradictions`       |
+| You want                               | Command                            |
+| -------------------------------------- | ---------------------------------- |
+| The specs that exist, and their status | `knowledge list`                   |
+| Everything one spec says               | `knowledge show <id>`              |
+| Every triple touching one node         | `knowledge describe <prefix:Node>` |
+| An answer across the whole graph       | `knowledge query "<SPARQL>"`       |
+| A preset survey                        | `knowledge ask`                    |
+| Contradictions in the graph            | `knowledge contradictions`         |
 
 `query`, `ask`, `graph` and `contradictions` read verified specs only; `describe` reads
 everything. Pass `--include-drafts` to widen the first group, and say that you did.
 
 ## Authoring
 
-| Step                            | Command                                  |
-| ------------------------------- | ---------------------------------------- |
-| Scaffold a new spec             | `knowledge new <id> --title "<Title>"`   |
-| Reconcile files ↔ database      | `knowledge scan`                         |
-| Record the writer's audit       | `knowledge model <id> --claim <prefix:IRI>` |
-| Open / answer a question        | `knowledge ask-question` / `knowledge answer` |
-| Confirm a spec is true          | `knowledge verify <id> --by <name>`      |
-| Find specs whose code changed   | `knowledge stale`                        |
-| Publish                         | `knowledge publish`                      |
+| Step                          | Command                                       |
+| ----------------------------- | --------------------------------------------- |
+| Scaffold a new spec           | `knowledge new <id> --title "<Title>"`        |
+| Reconcile files ↔ database    | `knowledge scan`                              |
+| Record the writer's audit     | `knowledge model <id> --claim <prefix:IRI>`   |
+| Open / answer a question      | `knowledge ask-question` / `knowledge answer` |
+| Confirm a spec is true        | `knowledge verify <id> --by <name>`           |
+| Find specs whose code changed | `knowledge stale`                             |
+| Publish                       | `knowledge publish`                           |
 
 ## Setup
 
