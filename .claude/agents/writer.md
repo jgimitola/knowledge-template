@@ -53,10 +53,9 @@ gets queried, not the prose.
 When both directions check out and the graph obeys the rules above:
 
 1. `knowledge scan` — reconcile the files first, so what you record matches what is on disk.
-2. `knowledge model <id> --claim <{{INSTANCE_PREFIX}}:IRI>` for each individual you audited —
-   this records that the graph was checked against the prose. Run `model` **after** `scan`,
-   not before: recording an audit of files the database has not yet seen records an audit of
-   the wrong thing.
+2. `knowledge model <id> --by <name>` — this records that the graph was checked against the
+   prose, under your name. Run `model` **after** `scan`, not before: recording an audit of
+   files the database has not yet seen records an audit of the wrong thing.
 
 `validate --strict` must pass. It is the same check the pre-push hook runs, so a spec that
 fails it here fails there too — running it now is how you find out on your terms.

@@ -162,14 +162,26 @@ def verify(conn, paths: Paths, config: Config, spec_id: str, by: str,
             "Answer them, or drop one deliberately with --prune <id> \"reason\"."
         )
 
-    sha = commit if commit is not None else head_commit(config.code_repo)
+    # A verified spec records the code commit it was confirmed against, so staleness can
+    # later tell whether the code has moved. With no code repository configured (a valid
+    # setup — the knowledge base may document something that is not a git checkout beside
+    # it), there is no commit to record, and verification proceeds without one rather than
+    # failing: an empty code_repo already disables `stale` and `dep`, and verify is no
+    # different.
+    if commit is not None:
+        sha = commit
+    elif config.code_repo is not None:
+        sha = head_commit(config.code_repo)
+    else:
+        sha = None
     conn.execute(
         "UPDATE spec SET status='verified', verified_at=?, verified_by=?,"
         " verified_against_commit=?, demoted_at=NULL, demoted_reason=NULL, updated_at=?"
         " WHERE id=?",
         (db.now(), by, sha, db.now(), spec_id),
     )
-    db.record_event(conn, spec_id, "verified", by, f"against {sha}")
+    detail = f"against {sha}" if sha is not None else "against no commit (no code repository)"
+    db.record_event(conn, spec_id, "verified", by, detail)
 
 
 def forget(conn, paths: Paths, spec_id: str, by: str) -> None:

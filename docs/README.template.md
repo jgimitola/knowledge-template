@@ -36,7 +36,7 @@ everything. Pass `--include-drafts` to widen the first group, and say that you d
 | ----------------------------- | --------------------------------------------- |
 | Scaffold a new spec           | `knowledge new <id> --title "<Title>"`        |
 | Reconcile files ↔ database    | `knowledge scan`                              |
-| Record the writer's audit     | `knowledge model <id> --claim <prefix:IRI>`   |
+| Record the writer's audit     | `knowledge model <id> --by <name>`            |
 | Open / answer a question      | `knowledge ask-question` / `knowledge answer` |
 | Confirm a spec is true        | `knowledge verify <id> --by <name>`           |
 | Find specs whose code changed | `knowledge stale`                             |

@@ -57,6 +57,21 @@ def test_verify_can_prune_a_question_deliberately(seeded, config):
     assert "question_dropped" in events and "verified" in events
 
 
+def test_verify_records_no_commit_when_no_code_repo_is_configured(seeded):
+    """An empty code_repo is a valid setup (it disables `stale` and `dep`), so verify must
+    proceed without a commit rather than crash trying to read one — the day-one experience
+    for a knowledge base that documents something which is not a git checkout beside it."""
+    repo, conn = seeded
+    codeless = make_config(None)
+    lifecycle.mark_modeled(conn, repo, "assets", by="writer", ontology_version="1.0.0")
+    lifecycle.verify(conn, repo, codeless, "assets", by="jesus", prune=[])
+
+    row = list(conn.execute(
+        "SELECT status, verified_by, verified_against_commit FROM spec WHERE id='assets'"
+    ))
+    assert row == [("verified", "jesus", None)]
+
+
 def test_demote_returns_a_verified_spec_to_draft(seeded, config):
     repo, conn = seeded
     lifecycle.mark_modeled(conn, repo, "assets", by="writer", ontology_version="1.0.0")

@@ -117,14 +117,14 @@ recipe is a decision offered. The three workflows are documented in
 
 ### Authoring
 
-| Command                                     | What it does                                        |
-| ------------------------------------------- | --------------------------------------------------- |
-| `knowledge new <id> --title "<Title>"`      | Scaffold `specs/<id>/`.                             |
-| `knowledge scan`                            | Reconcile spec files against the database.          |
-| `knowledge model <id> --claim <prefix:IRI>` | Record the writer's audit of the graph.             |
-| `knowledge ask-question <id> "<Q>"`         | Open a question against a spec.                     |
-| `knowledge answer <id> ...`                 | Answer an open question.                            |
-| `knowledge verify <id> --by <name>`         | Confirm a spec is true (a human act).               |
-| `knowledge forget ...`                      | Prune a question or claim, logged in the event log. |
-| `knowledge publish`                         | Render the specs and publish them.                  |
-| `knowledge init`                            | Bind this template to one project (run once).       |
+| Command                                | What it does                                        |
+| -------------------------------------- | --------------------------------------------------- |
+| `knowledge new <id> --title "<Title>"` | Scaffold `specs/<id>/`.                             |
+| `knowledge scan`                       | Reconcile spec files against the database.          |
+| `knowledge model <id> --by <name>`     | Record the writer's audit of the graph.             |
+| `knowledge ask-question <id> "<Q>"`    | Open a question against a spec.                     |
+| `knowledge answer <id> ...`            | Answer an open question.                            |
+| `knowledge verify <id> --by <name>`    | Confirm a spec is true (a human act).               |
+| `knowledge forget ...`                 | Prune a question or claim, logged in the event log. |
+| `knowledge publish`                    | Render the specs and publish them.                  |
+| `knowledge init`                       | Bind this template to one project (run once).       |

@@ -78,9 +78,9 @@ When the prose and the graph agree and no question is open, hand it to the write
 
 1. `knowledge scan` — reconcile the files against the database.
 2. Hand off to the **writer** agent, which audits the graph against the prose in both
-   directions and records `knowledge model <id> --claim <{{INSTANCE_PREFIX}}:IRI>` for the
-   individuals it checked. Do not run `model` yourself — the audit is the writer's job, and
-   recording it without doing it is the lie the two-agent split exists to prevent.
+   directions and records `knowledge model <id> --by <name>` for the spec it checked. Do
+   not run `model` yourself — the audit is the writer's job, and recording it without doing
+   it is the lie the two-agent split exists to prevent.
 
 ## Boundaries
 
