@@ -295,7 +295,9 @@ def cmd_contradictions(args: argparse.Namespace) -> int:
     found = False
 
     conflicts = contradictions.functional_conflicts(g, vocab)
-    if conflicts:
+    if conflicts is None:
+        print("skipped (not configured): functional-property conflicts")
+    elif conflicts:
         found = True
         print(f"{len(conflicts)} functional-property conflict(s):")
         for subject, prop, values in conflicts:
@@ -310,7 +312,9 @@ def cmd_contradictions(args: argparse.Namespace) -> int:
             print("  -", term)
 
     redeclared = lint.locally_redeclared_concepts(paths, vocab, ids)
-    if redeclared:
+    if redeclared is None:
+        print("skipped (not configured): locally redeclared concepts")
+    elif redeclared:
         found = True
         print(f"\n{len(redeclared)} concept(s) redeclared locally instead of referenced:")
         for msg in redeclared:

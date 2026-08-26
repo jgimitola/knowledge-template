@@ -10,18 +10,23 @@ from rdflib import Graph
 
 from knowledge.vocab import Vocabulary
 
-# Properties the ontology documents as single-valued, plus defaultsTo and route — the
-# design's own two examples of what this check looks for. "Functional by convention"
-# because RDFS never enforces it (ontology/README.md, "Properties with literal values").
-FUNCTIONAL_PROPERTIES = ("route", "editable", "required", "viewport", "defaultsTo")
 
-
-def functional_conflicts(g: Graph, vocab: Vocabulary) -> list[tuple[str, str, list[str]]]:
+def functional_conflicts(
+    g: Graph, vocab: Vocabulary
+) -> list[tuple[str, str, list[str]]] | None:
     """(subject, property, sorted values) for every subject asserting more than one value
-    on a property that is supposed to hold at most one — two route values on one view, two
-    defaultsTo values on one field."""
+    on a property configured as single-valued — two routes on one view, two defaults on one
+    field. RDFS never enforces this, so the list comes from knowledge.toml.
+
+    None when no properties are configured: nothing to check is not the same as nothing
+    found.
+    """
+    properties = vocab.checks.functional_properties
+    if not properties:
+        return None
+
     seen: dict[tuple[str, str], set[str]] = defaultdict(set)
-    for prop in FUNCTIONAL_PROPERTIES:
+    for prop in properties:
         for subject, obj in g.subject_objects(vocab.term(prop)):
             seen[(str(subject), prop)].add(str(obj))
     return sorted(
