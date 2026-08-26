@@ -71,6 +71,12 @@ def naming_violations(g: Graph, vocab: Vocabulary) -> list[str] | None:
 
     Two independent halves, each separately configurable: a pattern every instance of the
     field class must match, and a reservation of the underscore for that class alone.
+
+    None when no field class is configured, or when a field class is configured but
+    neither pattern nor underscore reservation is set. An empty field class makes the
+    check meaningless: without it, the underscore half has nothing to exempt, so it
+    would flag every field as a violation. The second condition leaves no checks active
+    to run, which is different from having checks that all pass.
     """
     checks = vocab.checks
     if not checks.field_class:
@@ -181,6 +187,10 @@ def ungrounded_literals(paths: Paths, vocab: Vocabulary, ids) -> list[str] | Non
 
     The prose is hard-wrapped, so the comparison collapses runs of whitespace first.
     Without that, a string straddling a line break reads as ungrounded when it is not.
+
+    None when verbatim_string_properties is empty: a project with no verbatim predicates
+    configured has nothing for this check to be about, which is different from having
+    predicates that all appear in the prose.
     """
     from knowledge.graph import load_spec_graph
     from knowledge.paths import spec_md
@@ -209,7 +219,12 @@ def ungrounded_literals(paths: Paths, vocab: Vocabulary, ids) -> list[str] | Non
 def locally_redeclared_concepts(paths: Paths, vocab: Vocabulary, ids) -> list[str] | None:
     """A concept declared once on one spec and referenced everywhere else is what turns
     independent specs into one connected graph. Declaring it again on some other spec is
-    the same fact twice, free to drift apart from the original."""
+    the same fact twice, free to drift apart from the original.
+
+    None when concept_class or concept_spec is empty: the check cannot identify what a
+    concept is, or enforce where concepts belong, so it has nothing to check, which is
+    different from finding concepts that all respect the rule.
+    """
     from knowledge.graph import load_spec_graph
 
     checks = vocab.checks
