@@ -10,19 +10,19 @@ from knowledge import db, graph, lifecycle, lint, scan
 from tests.conftest import make_config
 
 FIXTURE_TTL = """\
-app:Budgets a mon:Module ;
+app:Budgets a ex:Module ;
     rdfs:label   "Budgets"@en ;
     rdfs:comment "Monthly spending limits per category."@en ;
-    mon:contains app:BudgetsList .
+    ex:contains app:BudgetsList .
 
-app:BudgetsList a mon:View ;
+app:BudgetsList a ex:View ;
     rdfs:label "Budgets"@en ;
-    mon:partOf app:Budgets ;
-    mon:route  "/platform/budgets" .
+    ex:partOf app:Budgets ;
+    ex:route  "/platform/budgets" .
 
-app:BudgetsAreMonthly a mon:Rule ;
+app:BudgetsAreMonthly a ex:Rule ;
     rdfs:label     "A budget resets every calendar month"@en ;
-    mon:appliesTo  app:Budgets ;
+    ex:appliesTo  app:Budgets ;
     rdfs:comment   "Spending against a category clears at midnight on the first, so a limit hit in March says nothing about April."@en .
 """
 
@@ -39,14 +39,15 @@ def test_a_spec_can_be_scaffolded_modeled_and_verified(repo):
 
     lifecycle.mark_modeled(conn, repo, "budgets", by="writer", ontology_version="1.0.0")
 
-    g = graph.load_graph(repo, ["budgets"])
-    assert graph.dangling_terms(g) == []
-    assert lint.invented_predicates(g) == []
-    assert lint.invented_types(g) == []
-    assert lint.restated_rule_comments(g) == []
-    assert lint.naming_violations(g) == []
-
     config = make_config(repo.root)
+    vocab = config.vocabulary
+    g = graph.load_graph(repo, vocab, ["budgets"])
+    assert graph.dangling_terms(g, vocab) == []
+    assert lint.invented_predicates(g, vocab) == []
+    assert lint.invented_types(g, vocab) == []
+    assert lint.restated_rule_comments(g, vocab) == []
+    assert lint.naming_violations(g, vocab) == []
+
     lifecycle.verify(conn, repo, config, "budgets", by="jesus", prune=[], commit="abc123")
 
     row = list(conn.execute(

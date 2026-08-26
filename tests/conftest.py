@@ -28,62 +28,96 @@ def isolate_git_env(monkeypatch):
         if key.startswith("GIT_") and key not in gitcmd.ENV_KEPT:
             monkeypatch.delenv(key, raising=False)
 
-# Every term below is copied from ontology/monicords.ttl with the same rdf:type and the same
-# rdfs:domain / rdfs:range, so a test written against this ontology tests the real vocabulary.
-# The subClassOf edges and the domain/range declarations are what domain_range_violations reads.
+# A generic vocabulary, unrelated to any real project, so a test written against it tests
+# the mechanism rather than any one domain. The subClassOf edges and the domain/range
+# declarations are what domain_range_violations reads.
 ONTOLOGY = """\
-@prefix mon:     <https://monicords.com/ontology#> .
-@prefix app:     <https://monicords.com/id/> .
+@prefix ex:      <https://example.test/ontology#> .
+@prefix app:     <https://example.test/id/> .
 @prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
 @prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
 @prefix dcterms: <http://purl.org/dc/terms/> .
 
-mon:InterfaceElement a rdfs:Class ; rdfs:label "Interface element"@en .
-mon:Module a rdfs:Class ; rdfs:subClassOf mon:InterfaceElement ; rdfs:label "Module"@en .
-mon:View a rdfs:Class ; rdfs:subClassOf mon:InterfaceElement ; rdfs:label "View"@en .
-mon:Section a rdfs:Class ; rdfs:subClassOf mon:InterfaceElement ; rdfs:label "Section"@en .
-mon:Field a rdfs:Class ; rdfs:label "Field"@en .
-mon:Action a rdfs:Class ; rdfs:label "Action"@en .
-mon:Concept a rdfs:Class ; rdfs:label "Domain concept"@en .
-mon:Rule a rdfs:Class ; rdfs:label "Rule"@en .
+ex:InterfaceElement a rdfs:Class ; rdfs:label "Interface element"@en .
+ex:Module a rdfs:Class ; rdfs:subClassOf ex:InterfaceElement ; rdfs:label "Module"@en .
+ex:View a rdfs:Class ; rdfs:subClassOf ex:InterfaceElement ; rdfs:label "View"@en .
+ex:Section a rdfs:Class ; rdfs:subClassOf ex:InterfaceElement ; rdfs:label "Section"@en .
+ex:Field a rdfs:Class ; rdfs:label "Field"@en .
+ex:Action a rdfs:Class ; rdfs:label "Action"@en .
+ex:Concept a rdfs:Class ; rdfs:label "Domain concept"@en .
+ex:Rule a rdfs:Class ; rdfs:label "Rule"@en .
 
-mon:contains a rdf:Property ; rdfs:label "contains"@en ;
-    rdfs:domain mon:InterfaceElement ; rdfs:range mon:InterfaceElement .
-mon:partOf a rdf:Property ; rdfs:label "part of"@en ;
-    rdfs:domain mon:InterfaceElement ; rdfs:range mon:InterfaceElement .
-mon:displays a rdf:Property ; rdfs:label "displays"@en ;
-    rdfs:domain mon:InterfaceElement ; rdfs:range mon:Field .
-mon:scopedTo a rdf:Property ; rdfs:label "scoped to"@en ;
-    rdfs:domain mon:InterfaceElement ; rdfs:range mon:Concept .
-mon:appliesTo a rdf:Property ; rdfs:label "applies to"@en ; rdfs:domain mon:Rule .
-mon:relatesTo a rdf:Property ; rdfs:label "relates to"@en ;
-    rdfs:domain mon:Concept ; rdfs:range mon:Concept .
-mon:route a rdf:Property ; rdfs:label "route"@en ;
-    rdfs:domain mon:View ; rdfs:range xsd:string .
-mon:endpoint a rdf:Property ; rdfs:label "endpoint"@en ;
-    rdfs:domain mon:Action ; rdfs:range xsd:string .
-mon:emptyState a rdf:Property ; rdfs:label "empty state"@en ;
-    rdfs:domain mon:InterfaceElement ; rdfs:range xsd:string .
-mon:format a rdf:Property ; rdfs:label "format"@en ;
-    rdfs:domain mon:Field ; rdfs:range xsd:string .
+ex:contains a rdf:Property ; rdfs:label "contains"@en ;
+    rdfs:domain ex:InterfaceElement ; rdfs:range ex:InterfaceElement .
+ex:partOf a rdf:Property ; rdfs:label "part of"@en ;
+    rdfs:domain ex:InterfaceElement ; rdfs:range ex:InterfaceElement .
+ex:displays a rdf:Property ; rdfs:label "displays"@en ;
+    rdfs:domain ex:InterfaceElement ; rdfs:range ex:Field .
+ex:scopedTo a rdf:Property ; rdfs:label "scoped to"@en ;
+    rdfs:domain ex:InterfaceElement ; rdfs:range ex:Concept .
+ex:appliesTo a rdf:Property ; rdfs:label "applies to"@en ; rdfs:domain ex:Rule .
+ex:relatesTo a rdf:Property ; rdfs:label "relates to"@en ;
+    rdfs:domain ex:Concept ; rdfs:range ex:Concept .
+ex:route a rdf:Property ; rdfs:label "route"@en ;
+    rdfs:domain ex:View ; rdfs:range xsd:string .
+ex:endpoint a rdf:Property ; rdfs:label "endpoint"@en ;
+    rdfs:domain ex:Action ; rdfs:range xsd:string .
+ex:emptyState a rdf:Property ; rdfs:label "empty state"@en ;
+    rdfs:domain ex:InterfaceElement ; rdfs:range xsd:string .
+ex:format a rdf:Property ; rdfs:label "format"@en ;
+    rdfs:domain ex:Field ; rdfs:range xsd:string .
 """
 
 ASSETS_TTL = """\
-app:Assets a mon:View ;
+app:Assets a ex:View ;
     rdfs:label   "Assets"@en ;
-    mon:route    "/platform/assets" ;
-    mon:scopedTo app:Workspace .
+    ex:route     "/platform/assets" ;
+    ex:scopedTo  app:Workspace .
 """
 
 CONCEPTS_TTL = """\
-app:Workspace a mon:Concept ;
+app:Workspace a ex:Concept ;
     rdfs:label "Workspace"@en .
 """
 
+CONFIG_TOML = """\
+[project]
+name = "Example"
 
-def write_spec(root, spec_id, ttl, prose="Some prose.\n"):
+[vocabulary]
+ontology_file = "ontology.ttl"
+namespace = "https://example.test/ontology#"
+instances = "https://example.test/id/"
+prefix = "ex"
+instance_prefix = "app"
+rule_class = "Rule"
+concept_class = "Concept"
+concept_spec = "concepts"
+field_class = "Field"
+field_name_pattern = "^[A-Z][A-Za-z0-9]*_[a-z][A-Za-z0-9]*$"
+underscore_reserved = true
+functional_properties = ["route", "editable", "required", "viewport", "defaultsTo"]
+verbatim_string_properties = ["emptyState"]
+
+[repo]
+code_repo = "../code"
+
+[dependencies]
+route_property = "route"
+endpoint_property = "endpoint"
+route_glob = "app/**/{segments}/page.tsx"
+endpoint_glob = "app/{path}/**/route.ts"
+absorbed_prefixes = ["platform"]
+
+[publish]
+target = "github-wiki"
+remote = "https://example.com/x.wiki.git"
+"""
+
+
+def _write_spec(root, spec_id, ttl, prose="Some prose.\n"):
     directory = root / "specs" / spec_id
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "spec.md").write_text(
@@ -94,23 +128,44 @@ def write_spec(root, spec_id, ttl, prose="Some prose.\n"):
     return directory
 
 
-# knowledge.toml now requires a full [vocabulary] table (Task 2). These stay the monicords
-# namespaces on purpose — graph.py still has MON as a module constant at this point, so a
-# fixture using different namespaces would break every test that parses ONTOLOGY/ASSETS_TTL
-# above. Task 3 rewrites the fixture and the constant together.
+@pytest.fixture
+def write_spec():
+    """Tasks 4-7 request this as a fixture rather than importing it."""
+    return _write_spec
+
+
+# A separate template from CONFIG_TOML above: knowledge.toml's [repo]/[publish] values
+# overridden for one test, with the rest of the vocabulary/dependencies configuration a
+# working repository still needs. Kept distinct from the fixture ontology's namespace/prefix
+# so a caller only overrides what a given test actually cares about.
 KNOWLEDGE_TOML = """\
 [project]
-name = "Monicords"
+name = "Example"
 
 [vocabulary]
-ontology_file = "monicords.ttl"
-namespace = "https://monicords.com/ontology#"
-instances = "https://monicords.com/id/"
-prefix = "mon"
+ontology_file = "ontology.ttl"
+namespace = "https://example.test/ontology#"
+instances = "https://example.test/id/"
+prefix = "ex"
 instance_prefix = "app"
+rule_class = "Rule"
+concept_class = "Concept"
+concept_spec = "concepts"
+field_class = "Field"
+field_name_pattern = "^[A-Z][A-Za-z0-9]*_[a-z][A-Za-z0-9]*$"
+underscore_reserved = true
+functional_properties = ["route", "editable", "required", "viewport", "defaultsTo"]
+verbatim_string_properties = ["emptyState"]
 
 [repo]
 code_repo = "{code_repo}"
+
+[dependencies]
+route_property = "route"
+endpoint_property = "endpoint"
+route_glob = "app/**/{{segments}}/page.tsx"
+endpoint_glob = "app/{{path}}/**/route.ts"
+absorbed_prefixes = ["platform"]
 
 [publish]
 remote = "{remote}"
@@ -126,14 +181,14 @@ def write_knowledge_toml(root, *, code_repo="../code", remote="https://example.c
 
 def make_config(code_repo, remote="https://example.com/x.wiki.git"):
     """A Config for tests that exercise lifecycle/deps functions directly, without going
-    through load_config. Same monicords vocabulary as KNOWLEDGE_TOML above."""
+    through load_config. Same example vocabulary as KNOWLEDGE_TOML above."""
     return Config(
-        project_name="Monicords",
+        project_name="Example",
         vocabulary=Vocabulary(
-            ontology_file="monicords.ttl",
-            namespace="https://monicords.com/ontology#",
-            instances="https://monicords.com/id/",
-            prefix="mon",
+            ontology_file="ontology.ttl",
+            namespace="https://example.test/ontology#",
+            instances="https://example.test/id/",
+            prefix="ex",
             instance_prefix="app",
             checks=Checks(),
         ),
@@ -148,14 +203,25 @@ def make_config(code_repo, remote="https://example.com/x.wiki.git"):
 @pytest.fixture
 def repo(tmp_path):
     """A knowledge repository with an ontology and two specs."""
-    write_knowledge_toml(tmp_path)
+    (tmp_path / "knowledge.toml").write_text(CONFIG_TOML, encoding="utf-8")
     ontology = tmp_path / "ontology"
     ontology.mkdir()
-    (ontology / "monicords.ttl").write_text(ONTOLOGY, encoding="utf-8")
+    (ontology / "ontology.ttl").write_text(ONTOLOGY, encoding="utf-8")
     (ontology / "README.md").write_text("# Ontology\n\nThe vocabulary.\n", encoding="utf-8")
     (ontology / "VERSION").write_text("1.0.0\n", encoding="utf-8")
     (tmp_path / ".metadata").mkdir()
 
-    write_spec(tmp_path, "assets", ASSETS_TTL, "The Assets screen. See [Concepts](Concepts).\n")
-    write_spec(tmp_path, "concepts", CONCEPTS_TTL)
+    _write_spec(tmp_path, "assets", ASSETS_TTL, "The Assets screen. See [Concepts](Concepts).\n")
+    _write_spec(tmp_path, "concepts", CONCEPTS_TTL)
     return paths_mod.get_paths(tmp_path)
+
+
+@pytest.fixture
+def config(repo):
+    from knowledge.config import load_config
+    return load_config(repo.root)
+
+
+@pytest.fixture
+def repo_with_vocab(repo, config):
+    return repo, config.vocabulary

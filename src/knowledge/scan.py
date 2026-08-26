@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from knowledge import db
-from knowledge.graph import wiki_page_name
+from knowledge.graph import page_name
 from knowledge.lifecycle import demote
 from knowledge.paths import Paths
 
@@ -126,7 +126,7 @@ def scan(conn, paths: Paths) -> ScanReport:
             conn.execute(
                 "INSERT INTO spec (id,title,path,status,md_hash,ttl_hash,publishes_to_wiki,"
                 "wiki_page,created_at,updated_at) VALUES (?,?,?,'draft',?,?,1,?,?,?)",
-                (spec_id, title, path, md_hash, ttl_hash, wiki_page_name(spec_id),
+                (spec_id, title, path, md_hash, ttl_hash, page_name(spec_id),
                  timestamp, timestamp),
             )
             db.record_event(conn, spec_id, "created", "scan", None)

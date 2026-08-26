@@ -1,9 +1,9 @@
 """What code does a spec depend on, and has any of it changed since verification?
 
-Two sources. Derived globs come from the spec's own triples — a mon:route or a
-mon:endpoint resolves mechanically to a file pattern — and are recomputed on every run, so
-they cannot themselves go stale. Manual globs in spec_dependency cover what the ontology
-does not model: services, Prisma models, shared utilities.
+Two sources. Derived globs come from the spec's own triples — a route or an endpoint
+resolves mechanically to a file pattern — and are recomputed on every run, so they cannot
+themselves go stale. Manual globs in spec_dependency cover what the ontology does not
+model: services, Prisma models, shared utilities.
 
 This never blocks a build. A code change failing on documentation is a check people learn
 to bypass; staleness is data, surfaced as work.
@@ -18,6 +18,7 @@ from knowledge import gitcmd, lifecycle
 from knowledge.config import Config
 from knowledge.graph import load_spec_graph, run_query
 from knowledge.paths import Paths
+from knowledge.vocab import Vocabulary
 
 DYNAMIC_SEGMENT = re.compile(r"^\{.+\}$")
 
@@ -43,12 +44,15 @@ def endpoint_to_glob(endpoint: str) -> str:
     return "app/" + path.strip("/") + "/**/route.ts"
 
 
-def derived_globs(paths: Paths, spec_id: str) -> set[str]:
-    g = load_spec_graph(paths, spec_id)
-    globs = {route_to_glob(row[0]) for row in run_query(g, "SELECT ?r WHERE { ?s mon:route ?r }")}
+def derived_globs(paths: Paths, vocab: Vocabulary, spec_id: str) -> set[str]:
+    g = load_spec_graph(paths, vocab, spec_id)
+    globs = {
+        route_to_glob(row[0])
+        for row in run_query(g, vocab, f"SELECT ?r WHERE {{ ?s {vocab.prefix}:route ?r }}")
+    }
     globs |= {
         endpoint_to_glob(row[0])
-        for row in run_query(g, "SELECT ?e WHERE { ?s mon:endpoint ?e }")
+        for row in run_query(g, vocab, f"SELECT ?e WHERE {{ ?s {vocab.prefix}:endpoint ?e }}")
     }
     return globs
 
@@ -60,8 +64,8 @@ def manual_globs(conn, spec_id: str) -> set[str]:
     }
 
 
-def spec_globs(conn, paths: Paths, spec_id: str) -> set[str]:
-    return derived_globs(paths, spec_id) | manual_globs(conn, spec_id)
+def spec_globs(conn, paths: Paths, vocab: Vocabulary, spec_id: str) -> set[str]:
+    return derived_globs(paths, vocab, spec_id) | manual_globs(conn, spec_id)
 
 
 def changed_files(code_repo: Path, since: str) -> list[str]:
@@ -110,7 +114,9 @@ def check(conn, paths: Paths, config: Config, demote: bool,
         " WHERE status = 'verified' AND verified_against_commit IS NOT NULL ORDER BY id"
     ))
     for spec_id, since in rows:
-        hits = matches(spec_globs(conn, paths, spec_id), changed_files(root, since))
+        hits = matches(
+            spec_globs(conn, paths, config.vocabulary, spec_id), changed_files(root, since)
+        )
         if not hits:
             continue
         findings.append((spec_id, hits))
@@ -121,12 +127,12 @@ def check(conn, paths: Paths, config: Config, demote: bool,
     return findings
 
 
-def uncheckable(conn, paths: Paths) -> list[str]:
-    """Verified specs with zero dependencies — no mon:route/mon:endpoint and no manual
+def uncheckable(conn, paths: Paths, vocab: Vocabulary) -> list[str]:
+    """Verified specs with zero dependencies — no derived route/endpoint and no manual
     glob. `check` reports these as clean, which is misleading: "checked and clean" and
     "cannot be checked" are different states, and conflating them is the same sin as
     guessing a missing exchange rate."""
     ids = [
         row[0] for row in conn.execute("SELECT id FROM spec WHERE status = 'verified' ORDER BY id")
     ]
-    return [spec_id for spec_id in ids if not spec_globs(conn, paths, spec_id)]
+    return [spec_id for spec_id in ids if not spec_globs(conn, paths, vocab, spec_id)]

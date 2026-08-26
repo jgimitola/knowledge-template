@@ -13,8 +13,8 @@ import re
 
 from rdflib import RDF, RDFS, Graph, URIRef
 
-from knowledge.graph import APP, MON
 from knowledge.paths import Paths
+from knowledge.vocab import Vocabulary
 
 FIELD_NAME = re.compile(r"^[A-Z][A-Za-z0-9]*_[a-z][A-Za-z0-9]*$")
 
@@ -23,38 +23,38 @@ def _local(term) -> str:
     return str(term).rsplit("#", 1)[-1].rsplit("/", 1)[-1]
 
 
-def known_terms(g: Graph) -> tuple[set[str], set[str]]:
-    """(classes, properties) the ontology itself declares under mon:."""
-    classes = {str(s) for s in g.subjects(RDF.type, RDFS.Class) if str(s).startswith(MON)}
+def known_terms(g: Graph, vocab: Vocabulary) -> tuple[set[str], set[str]]:
+    """(classes, properties) the ontology itself declares under the project namespace."""
+    classes = {str(s) for s in g.subjects(RDF.type, RDFS.Class) if vocab.is_term(s)}
     properties = {
-        str(s) for s in g.subjects(RDF.type, RDF.Property) if str(s).startswith(MON)
+        str(s) for s in g.subjects(RDF.type, RDF.Property) if vocab.is_term(s)
     }
     return classes, properties
 
 
-def invented_predicates(g: Graph) -> list[str]:
-    """Every mon: predicate actually asserted, that the ontology never declared."""
-    _, properties = known_terms(g)
-    used = {str(p) for p in g.predicates() if str(p).startswith(MON)}
+def invented_predicates(g: Graph, vocab: Vocabulary) -> list[str]:
+    """Every project-namespace predicate actually asserted, that the ontology never declared."""
+    _, properties = known_terms(g, vocab)
+    used = {str(p) for p in g.predicates() if vocab.is_term(p)}
     return sorted(used - properties)
 
 
-def invented_types(g: Graph) -> list[str]:
-    """Every mon: class actually asserted with `a`, that the ontology never declared."""
-    classes, _ = known_terms(g)
-    used = {str(o) for o in g.objects(None, RDF.type) if str(o).startswith(MON)}
+def invented_types(g: Graph, vocab: Vocabulary) -> list[str]:
+    """Every project-namespace class actually asserted with `a`, that the ontology never declared."""
+    classes, _ = known_terms(g, vocab)
+    used = {str(o) for o in g.objects(None, RDF.type) if vocab.is_term(o)}
     return sorted(used - classes)
 
 
-def restated_rule_comments(g: Graph) -> list[str]:
+def restated_rule_comments(g: Graph, vocab: Vocabulary) -> list[str]:
     """A comment that just repeats the label carries no reason a reader could not already
-    infer from the label alone — the whole point of a mon:Rule's rdfs:comment."""
+    infer from the label alone — the whole point of a rule's rdfs:comment."""
 
     def norm(text: str) -> str:
         return text.strip().rstrip(".").lower()
 
     offenders = []
-    for rule in g.subjects(RDF.type, URIRef(MON + "Rule")):
+    for rule in g.subjects(RDF.type, vocab.term("Rule")):
         label = next((str(o) for o in g.objects(rule, RDFS.label)), "")
         comment = next((str(o) for o in g.objects(rule, RDFS.comment)), "")
         if not comment or norm(comment) == norm(label):
@@ -62,17 +62,17 @@ def restated_rule_comments(g: Graph) -> list[str]:
     return sorted(offenders)
 
 
-def naming_violations(g: Graph) -> list[str]:
+def naming_violations(g: Graph, vocab: Vocabulary) -> list[str]:
     """Fields follow `<Owner>_<field>`; every other individual avoids the underscore that
     pattern reserves for fields (ontology/README.md's naming table)."""
     offenders = []
-    fields = set(g.subjects(RDF.type, URIRef(MON + "Field")))
+    fields = set(g.subjects(RDF.type, vocab.term("Field")))
     for term in fields:
         if not FIELD_NAME.match(_local(term)):
             offenders.append(f"{term} does not match the <Owner>_<field> pattern")
     non_fields = {
         s for s in g.subjects(RDF.type, None)
-        if str(s).startswith(APP) and s not in fields
+        if vocab.is_instance(s) and s not in fields
     }
     for term in non_fields:
         if "_" in _local(term):
@@ -83,9 +83,9 @@ def naming_violations(g: Graph) -> list[str]:
 def _superclasses(g: Graph) -> dict[URIRef, set[URIRef]]:
     """Every class each class inherits from, transitively over rdfs:subClassOf.
 
-    Without this, mon:contains — declared over mon:InterfaceElement — would flag every
-    triple in the corpus, because nothing is ever typed as mon:InterfaceElement directly.
-    mon:Module, mon:View and mon:Section are all subclasses of it.
+    Without this, a containment predicate declared over a base interface-element class
+    would flag every triple in the corpus, because nothing is ever typed as that base
+    class directly — only its subclasses (a module, a view, a section, ...) are.
     """
     direct: dict[URIRef, set[URIRef]] = {}
     for sub, sup in g.subject_objects(RDFS.subClassOf):
@@ -103,17 +103,19 @@ def _superclasses(g: Graph) -> dict[URIRef, set[URIRef]]:
     return closure
 
 
-def domain_range_violations(g: Graph) -> list[str]:
+def domain_range_violations(g: Graph, vocab: Vocabulary) -> list[str]:
     """A declared predicate used with a subject or object of the wrong type.
 
     The five checks above catch invented terms. This catches the other half of ontology
-    conformance: a real mon: predicate asserted where the ontology says it cannot go —
-    mon:emptyState, whose domain is mon:InterfaceElement, hung on a mon:Field.
+    conformance: a real project-namespace predicate asserted where the ontology says it
+    cannot go — an emptyState property, whose domain is the base interface-element class,
+    hung on a field.
 
     Two tolerances keep it free of false positives. Untyped terms are skipped, because
     graph.dangling_terms already owns those and a term with no rdf:type cannot be judged
-    against a class. Ranges outside mon: are skipped, because xsd:string and rdfs:Literal
-    describe a literal's datatype, which is not a class an individual is typed with.
+    against a class. Ranges outside the project namespace are skipped, because xsd:string
+    and rdfs:Literal describe a literal's datatype, which is not a class an individual is
+    typed with.
     """
     supers = _superclasses(g)
 
@@ -125,17 +127,17 @@ def domain_range_violations(g: Graph) -> list[str]:
         return found
 
     def describe(types: set[URIRef]) -> str:
-        return ", ".join(f"mon:{_local(t)}" for t in sorted(types, key=str))
+        return ", ".join(vocab.qname(t) for t in sorted(types, key=str))
 
     offenders = []
     for prop in g.subjects(RDF.type, RDF.Property):
-        if not str(prop).startswith(MON):
+        if not vocab.is_term(prop):
             continue
         domains = set(g.objects(prop, RDFS.domain))
-        ranges = {r for r in g.objects(prop, RDFS.range) if str(r).startswith(MON)}
+        ranges = {r for r in g.objects(prop, RDFS.range) if vocab.is_term(r)}
         if not domains and not ranges:
             continue
-        name = f"mon:{_local(prop)}"
+        name = vocab.qname(prop)
         for subject, obj in g.subject_objects(prop):
             subject_types = types_of(subject)
             if domains and subject_types and not (domains & subject_types):
@@ -154,50 +156,49 @@ def domain_range_violations(g: Graph) -> list[str]:
     return sorted(offenders)
 
 
-def ungrounded_empty_states(paths: Paths, ids) -> list[str]:
-    """A mon:emptyState literal no sentence in the owning spec.md states.
+def ungrounded_empty_states(paths: Paths, vocab: Vocabulary, ids) -> list[str]:
+    """An emptyState literal no sentence in the owning spec.md states.
 
-    mon:emptyState is the one predicate whose value is a verbatim UI string rather than a
+    emptyState is the one predicate whose value is a verbatim UI string rather than a
     paraphrase, which makes "does the prose say this?" a question code can answer. The
     writer's graph-to-prose rule says a triple the prose does not support is removed; this
-    is that rule, mechanised, for the one predicate it can be mechanised for. mon:format is
-    paraphrase by design and mon:defaultsTo often is too — neither belongs here.
+    is that rule, mechanised, for the one predicate it can be mechanised for. format is
+    paraphrase by design and defaultsTo often is too — neither belongs here.
 
     The prose is hard-wrapped, so the comparison collapses runs of whitespace first. Without
-    that, a string straddling a line break reads as ungrounded when it is not: three of the
-    corpus's fifteen grounded literals are wrapped that way.
+    that, a string straddling a line break reads as ungrounded when it is not.
     """
     from knowledge.graph import load_spec_graph
     from knowledge.paths import spec_md
 
-    empty_state = URIRef(MON + "emptyState")
+    empty_state = vocab.term("emptyState")
     offenders = []
     for spec_id in ids:
         path = spec_md(paths, spec_id)
         if not path.is_file():
             continue
         prose = re.sub(r"\s+", " ", path.read_text(encoding="utf-8"))
-        for subject, literal in load_spec_graph(paths, spec_id).subject_objects(empty_state):
+        for subject, literal in load_spec_graph(paths, vocab, spec_id).subject_objects(empty_state):
             if str(literal) not in prose:
                 offenders.append(
-                    f"{subject} has mon:emptyState {str(literal)!r},"
+                    f"{subject} has {vocab.prefix}:emptyState {str(literal)!r},"
                     f" which no sentence of {spec_id}/spec.md states"
                 )
     return sorted(offenders)
 
 
-def locally_redeclared_concepts(paths: Paths, ids) -> list[str]:
+def locally_redeclared_concepts(paths: Paths, vocab: Vocabulary, ids) -> list[str]:
     """A concept declared once on the `concepts` spec and referenced everywhere else is
     what turns independent specs into one connected graph. Declaring it again on some other
     spec is the same fact twice, free to drift apart from the original."""
     from knowledge.graph import load_spec_graph
 
-    concept = URIRef(MON + "Concept")
+    concept = vocab.term("Concept")
     offenders = []
     for spec_id in ids:
         if spec_id == "concepts":
             continue
-        g = load_spec_graph(paths, spec_id)
+        g = load_spec_graph(paths, vocab, spec_id)
         for term in g.subjects(RDF.type, concept):
             offenders.append(f"{term} declared on {spec_id!r} instead of concepts")
     return sorted(offenders)

@@ -5,7 +5,7 @@ from knowledge import paths
 
 def make_repo(tmp_path):
     (tmp_path / "knowledge.toml").write_text(
-        '[repo]\ncode_repo = "../monicords_app"\n\n'
+        '[repo]\ncode_repo = "../code"\n\n'
         '[wiki]\nremote = "https://example.com/x.wiki.git"\n',
         encoding="utf-8",
     )
@@ -27,7 +27,7 @@ def test_paths_are_derived_from_the_root(tmp_path):
     root = make_repo(tmp_path)
     p = paths.get_paths(root)
     assert p.specs == root / "specs"
-    assert p.ontology_ttl == root / "ontology" / "monicords.ttl"
+    assert p.ontology_ttl == root / "ontology" / "ontology.ttl"
     assert p.db == root / ".metadata" / "knowledge.db"
     assert p.dump == root / ".metadata" / "dump.sql"
     assert paths.spec_md(p, "assets") == root / "specs" / "assets" / "spec.md"

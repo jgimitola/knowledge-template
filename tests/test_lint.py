@@ -1,180 +1,188 @@
 from knowledge import graph, lint
-from tests.conftest import write_spec
 
 
-def test_invented_predicates_finds_an_undeclared_mon_property(repo):
-    write_spec(repo.root, "typo", 'app:Assets a mon:View ; mon:rout "/x" .\n')
-    g = graph.load_graph(repo)
-    assert "https://monicords.com/ontology#rout" in lint.invented_predicates(g)
+def test_invented_predicates_finds_an_undeclared_property(repo, config, write_spec):
+    write_spec(repo.root, "typo", 'app:Assets a ex:View ; ex:rout "/x" .\n')
+    g = graph.load_graph(repo, config.vocabulary)
+    assert "https://example.test/ontology#rout" in lint.invented_predicates(g, config.vocabulary)
 
 
-def test_invented_predicates_is_empty_for_a_clean_graph(repo):
-    assert lint.invented_predicates(graph.load_graph(repo)) == []
+def test_invented_predicates_is_empty_for_a_clean_graph(repo, config):
+    g = graph.load_graph(repo, config.vocabulary)
+    assert lint.invented_predicates(g, config.vocabulary) == []
 
 
-def test_invented_types_finds_an_undeclared_mon_class(repo):
-    write_spec(repo.root, "typo", 'app:Thing a mon:Widget ; rdfs:label "Thing"@en .\n')
-    g = graph.load_graph(repo)
-    assert "https://monicords.com/ontology#Widget" in lint.invented_types(g)
+def test_invented_types_finds_an_undeclared_class(repo, config, write_spec):
+    write_spec(repo.root, "typo", 'app:Thing a ex:Widget ; rdfs:label "Thing"@en .\n')
+    g = graph.load_graph(repo, config.vocabulary)
+    assert "https://example.test/ontology#Widget" in lint.invented_types(g, config.vocabulary)
 
 
-def test_restated_rule_comments_flags_a_comment_that_repeats_the_label(repo):
+def test_restated_rule_comments_flags_a_comment_that_repeats_the_label(repo, config, write_spec):
     write_spec(repo.root, "lazy", """\
-app:LazyRule a mon:Rule ;
+app:LazyRule a ex:Rule ;
     rdfs:label   "Amount is required"@en ;
     rdfs:comment "Amount is required."@en .
 """)
-    g = graph.load_graph(repo)
-    assert "https://monicords.com/id/LazyRule" in lint.restated_rule_comments(g)
+    g = graph.load_graph(repo, config.vocabulary)
+    assert "https://example.test/id/LazyRule" in lint.restated_rule_comments(g, config.vocabulary)
 
 
-def test_restated_rule_comments_accepts_a_comment_that_explains_why(repo):
+def test_restated_rule_comments_accepts_a_comment_that_explains_why(repo, config, write_spec):
     write_spec(repo.root, "explained", """\
-app:ExplainedRule a mon:Rule ;
+app:ExplainedRule a ex:Rule ;
     rdfs:label   "Amount is required"@en ;
     rdfs:comment "An asset with no amount cannot be summed into any total."@en .
 """)
-    g = graph.load_graph(repo)
-    assert "https://monicords.com/id/ExplainedRule" not in lint.restated_rule_comments(g)
+    g = graph.load_graph(repo, config.vocabulary)
+    assert ("https://example.test/id/ExplainedRule"
+            not in lint.restated_rule_comments(g, config.vocabulary))
 
 
-def test_restated_rule_comments_flags_a_missing_comment(repo):
-    write_spec(repo.root, "silent", 'app:SilentRule a mon:Rule ; rdfs:label "No note"@en .\n')
-    g = graph.load_graph(repo)
-    assert "https://monicords.com/id/SilentRule" in lint.restated_rule_comments(g)
+def test_restated_rule_comments_flags_a_missing_comment(repo, config, write_spec):
+    write_spec(repo.root, "silent", 'app:SilentRule a ex:Rule ; rdfs:label "No note"@en .\n')
+    g = graph.load_graph(repo, config.vocabulary)
+    assert "https://example.test/id/SilentRule" in lint.restated_rule_comments(g, config.vocabulary)
 
 
-def test_naming_violations_accepts_the_documented_field_pattern(repo):
+def test_naming_violations_accepts_the_documented_field_pattern(repo, config, write_spec):
     write_spec(repo.root, "goodfield",
-               'app:Asset_name a mon:Field ; rdfs:label "Name"@en .\n')
-    g = graph.load_graph(repo)
-    assert lint.naming_violations(g) == []
+               'app:Asset_name a ex:Field ; rdfs:label "Name"@en .\n')
+    g = graph.load_graph(repo, config.vocabulary)
+    assert lint.naming_violations(g, config.vocabulary) == []
 
 
-def test_naming_violations_flags_a_field_missing_its_owner_prefix(repo):
-    write_spec(repo.root, "badfield", 'app:name a mon:Field ; rdfs:label "Name"@en .\n')
-    g = graph.load_graph(repo)
-    assert any("app:name" in msg or "id/name" in msg for msg in lint.naming_violations(g))
+def test_naming_violations_flags_a_field_missing_its_owner_prefix(repo, config, write_spec):
+    write_spec(repo.root, "badfield", 'app:name a ex:Field ; rdfs:label "Name"@en .\n')
+    g = graph.load_graph(repo, config.vocabulary)
+    assert any(
+        "app:name" in msg or "id/name" in msg
+        for msg in lint.naming_violations(g, config.vocabulary)
+    )
 
 
-def test_naming_violations_flags_an_underscore_outside_a_field(repo):
+def test_naming_violations_flags_an_underscore_outside_a_field(repo, config, write_spec):
     write_spec(repo.root, "badview",
-               'app:Assets_List a mon:View ; rdfs:label "Assets List"@en .\n')
-    g = graph.load_graph(repo)
-    assert any("Assets_List" in msg for msg in lint.naming_violations(g))
+               'app:Assets_List a ex:View ; rdfs:label "Assets List"@en .\n')
+    g = graph.load_graph(repo, config.vocabulary)
+    assert any("Assets_List" in msg for msg in lint.naming_violations(g, config.vocabulary))
 
 
-def test_locally_redeclared_concepts_flags_a_concept_declared_outside_its_home_spec(repo):
+def test_locally_redeclared_concepts_flags_a_concept_declared_outside_its_home_spec(
+    repo, config, write_spec
+):
     write_spec(repo.root, "duplicate",
-               'app:Workspace a mon:Concept ; rdfs:label "Workspace"@en .\n')
+               'app:Workspace a ex:Concept ; rdfs:label "Workspace"@en .\n')
     ids = graph.spec_ids(repo)
-    offenders = lint.locally_redeclared_concepts(repo, ids)
+    offenders = lint.locally_redeclared_concepts(repo, config.vocabulary, ids)
     assert any("Workspace" in msg and "duplicate" in msg for msg in offenders)
 
 
-def test_locally_redeclared_concepts_is_empty_when_concepts_lives_only_on_its_own_page(repo):
+def test_locally_redeclared_concepts_is_empty_when_concepts_lives_only_on_its_own_page(
+    repo, config
+):
     ids = graph.spec_ids(repo)
-    assert lint.locally_redeclared_concepts(repo, ids) == []
+    assert lint.locally_redeclared_concepts(repo, config.vocabulary, ids) == []
 
 
 CONFORMANT_TTL = """\
-app:Budgets a mon:Module ;
+app:Budgets a ex:Module ;
     rdfs:label   "Budgets"@en ;
-    mon:contains app:BudgetsList .
+    ex:contains app:BudgetsList .
 
-app:BudgetsList a mon:View ;
+app:BudgetsList a ex:View ;
     rdfs:label   "Budgets"@en ;
-    mon:partOf   app:Budgets ;
-    mon:route    "/platform/budgets" ;
-    mon:scopedTo app:Workspace ;
-    mon:displays app:Budget_limit .
+    ex:partOf   app:Budgets ;
+    ex:route    "/platform/budgets" ;
+    ex:scopedTo app:Workspace ;
+    ex:displays app:Budget_limit .
 
-app:Budget_limit a mon:Field ;
+app:Budget_limit a ex:Field ;
     rdfs:label "Limit"@en ;
-    mon:format "An amount in the local currency."@en .
+    ex:format "An amount in the local currency."@en .
 """
 
 
-def test_domain_range_violations_flags_a_field_carrying_an_interface_element_predicate(repo):
-    """mon:emptyState declares rdfs:domain mon:InterfaceElement; a mon:Field is not one.
-
-    This is the live violation the corpus actually carried, on app:LoanOut_installments.
-    """
+def test_domain_range_violations_flags_a_field_carrying_an_interface_element_predicate(
+    repo, config, write_spec
+):
+    """emptyState declares rdfs:domain InterfaceElement; a Field is not one."""
     write_spec(repo.root, "misplaced", """\
-app:Loan_installments a mon:Field ;
+app:Loan_installments a ex:Field ;
     rdfs:label     "Installments"@en ;
-    mon:emptyState "No installments yet." .
+    ex:emptyState "No installments yet." .
 """)
-    g = graph.load_graph(repo)
+    g = graph.load_graph(repo, config.vocabulary)
     assert any(
         "Loan_installments" in msg and "emptyState" in msg
-        for msg in lint.domain_range_violations(g)
+        for msg in lint.domain_range_violations(g, config.vocabulary)
     )
 
 
-def test_domain_range_violations_flags_an_object_of_the_wrong_type(repo):
-    """mon:displays declares rdfs:range mon:Field; app:Workspace is a mon:Concept."""
+def test_domain_range_violations_flags_an_object_of_the_wrong_type(repo, config, write_spec):
+    """displays declares rdfs:range Field; app:Workspace is a Concept."""
     write_spec(repo.root, "wrongobject", """\
-app:Panel a mon:Section ;
+app:Panel a ex:Section ;
     rdfs:label   "Panel"@en ;
-    mon:displays app:Workspace .
+    ex:displays app:Workspace .
 """)
-    g = graph.load_graph(repo)
+    g = graph.load_graph(repo, config.vocabulary)
     assert any(
         "displays" in msg and "Workspace" in msg
-        for msg in lint.domain_range_violations(g)
+        for msg in lint.domain_range_violations(g, config.vocabulary)
     )
 
 
-def test_domain_range_violations_accepts_conformant_individuals_across_the_subclass_closure(repo):
+def test_domain_range_violations_accepts_conformant_individuals_across_the_subclass_closure(
+    repo, config, write_spec
+):
     """The acceptance case is only meaningful because this fixture is full of triples the
-    check actually inspects: mon:contains and mon:partOf between a Module and a View, both
-    of which conform only through rdfs:subClassOf mon:InterfaceElement. Drop the closure and
-    this test fails."""
+    check actually inspects: contains and partOf between a Module and a View, both of which
+    conform only through rdfs:subClassOf InterfaceElement. Drop the closure and this test
+    fails."""
     write_spec(repo.root, "budgets", CONFORMANT_TTL)
-    g = graph.load_graph(repo)
-    assert lint.domain_range_violations(g) == []
+    g = graph.load_graph(repo, config.vocabulary)
+    assert lint.domain_range_violations(g, config.vocabulary) == []
 
 
-def test_domain_range_violations_ignores_a_literal_range(repo):
-    """mon:route's range is xsd:string. A literal has no rdf:type to check it against, so
-    the check must skip it rather than call every route a violation."""
+def test_domain_range_violations_ignores_a_literal_range(repo, config, write_spec):
+    """route's range is xsd:string. A literal has no rdf:type to check it against, so the
+    check must skip it rather than call every route a violation."""
     write_spec(repo.root, "budgets", CONFORMANT_TTL)
-    g = graph.load_graph(repo)
-    assert not any("route" in msg for msg in lint.domain_range_violations(g))
+    g = graph.load_graph(repo, config.vocabulary)
+    assert not any("route" in msg for msg in lint.domain_range_violations(g, config.vocabulary))
 
 
-def test_ungrounded_empty_states_flags_a_string_no_sentence_states(repo):
+def test_ungrounded_empty_states_flags_a_string_no_sentence_states(repo, config, write_spec):
     write_spec(repo.root, "invented", """\
-app:InventedTable a mon:Section ;
+app:InventedTable a ex:Section ;
     rdfs:label     "Table"@en ;
-    mon:emptyState "No rows to show." .
+    ex:emptyState "No rows to show." .
 """, prose="A table of five columns, footed with a count of what it holds.\n")
     ids = graph.spec_ids(repo)
     assert any(
         "InventedTable" in msg and "No rows to show." in msg
-        for msg in lint.ungrounded_empty_states(repo, ids)
+        for msg in lint.ungrounded_empty_states(repo, config.vocabulary, ids)
     )
 
 
-def test_ungrounded_empty_states_accepts_a_string_the_prose_states(repo):
+def test_ungrounded_empty_states_accepts_a_string_the_prose_states(repo, config, write_spec):
     write_spec(repo.root, "grounded", """\
-app:GroundedTable a mon:Section ;
+app:GroundedTable a ex:Section ;
     rdfs:label     "Table"@en ;
-    mon:emptyState "No workspaces yet." .
+    ex:emptyState "No workspaces yet." .
 """, prose="With nothing to show the table reads **No workspaces yet.**\n")
     ids = graph.spec_ids(repo)
-    assert lint.ungrounded_empty_states(repo, ids) == []
+    assert lint.ungrounded_empty_states(repo, config.vocabulary, ids) == []
 
 
-def test_ungrounded_empty_states_accepts_a_string_the_prose_hard_wraps(repo):
+def test_ungrounded_empty_states_accepts_a_string_the_prose_hard_wraps(repo, config, write_spec):
     """The prose is hard-wrapped at 90 columns, so a literal can straddle a line break. A
-    byte-for-byte substring test calls that ungrounded; incomes-detail's 'No deductions
-    yet.' is the real case, wrapped between 'No' and 'deductions'."""
+    byte-for-byte substring test calls that ungrounded when it is not."""
     write_spec(repo.root, "wrapped", """\
-app:WrappedTable a mon:Section ;
+app:WrappedTable a ex:Section ;
     rdfs:label     "Table"@en ;
-    mon:emptyState "No deductions yet." .
+    ex:emptyState "No deductions yet." .
 """, prose="The monthly column is red. With none recorded the section reads **No\ndeductions yet.**\n")
     ids = graph.spec_ids(repo)
-    assert lint.ungrounded_empty_states(repo, ids) == []
+    assert lint.ungrounded_empty_states(repo, config.vocabulary, ids) == []

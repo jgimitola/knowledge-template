@@ -15,14 +15,16 @@ from pathlib import Path
 
 from knowledge import db, gitcmd, graph, scan
 from knowledge.config import Config, load_config
-from knowledge.paths import Paths, get_paths
+from knowledge.paths import Paths, find_root, get_paths
 
 VERSION = "0.1.0"
 
 
 def open_repo(_args: argparse.Namespace) -> tuple[Paths, Config, sqlite3.Connection]:
-    paths = get_paths()
-    return paths, load_config(paths.root), db.connect(paths)
+    root = find_root()
+    config = load_config(root)
+    paths = get_paths(root, config.vocabulary.ontology_file)
+    return paths, config, db.connect(paths)
 
 
 def _rows(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> list[tuple]:
@@ -186,12 +188,13 @@ def _check(name: str, items: Sequence[str], ok_message: str, strict: bool) -> bo
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    paths, _config, _ = open_repo(args)
+    paths, config, _ = open_repo(args)
+    vocab = config.vocabulary
     from knowledge import lint
     ids = graph.spec_ids(paths)
     print(f"{len(ids)} spec(s)")
     try:
-        g = graph.load_graph(paths, ids)
+        g = graph.load_graph(paths, vocab, ids)
     except Exception as exc:  # noqa: BLE001 - the parser's message is the useful part
         print(f"\nPARSE FAILED: {exc}")
         return 1
@@ -199,35 +202,35 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
     strict = args.strict
     failures = [
-        _check("term(s) referenced but never declared", graph.dangling_terms(g),
+        _check("term(s) referenced but never declared", graph.dangling_terms(g, vocab),
                "no dangling references", True),
         _check("link(s) point at pages that do not exist", graph.broken_links(paths, ids),
                "all internal links resolve", strict),
         _check("invented ontology term(s) never declared",
-               lint.invented_predicates(g) + lint.invented_types(g),
+               lint.invented_predicates(g, vocab) + lint.invented_types(g, vocab),
                "no invented ontology terms", strict),
         _check("rule(s) whose comment restates the label or is missing",
-               lint.restated_rule_comments(g),
+               lint.restated_rule_comments(g, vocab),
                "every rule's comment says more than its label", strict),
-        _check("naming violation(s)", lint.naming_violations(g),
+        _check("naming violation(s)", lint.naming_violations(g, vocab),
                "no naming violations", strict),
         _check("concept(s) redeclared locally instead of referenced",
-               lint.locally_redeclared_concepts(paths, ids),
+               lint.locally_redeclared_concepts(paths, vocab, ids),
                "no locally redeclared concepts", strict),
         _check("predicate(s) used outside their declared domain or range",
-               lint.domain_range_violations(g),
+               lint.domain_range_violations(g, vocab),
                "every predicate stays inside its declared domain and range", strict),
         _check("empty-state string(s) no prose states",
-               lint.ungrounded_empty_states(paths, ids),
+               lint.ungrounded_empty_states(paths, vocab, ids),
                "every empty state appears in its spec's prose", strict),
     ]
     return 1 if any(failures) else 0
 
 
 def cmd_graph(args: argparse.Namespace) -> int:
-    paths, _config, conn = open_repo(args)
+    paths, config, conn = open_repo(args)
     ids = _selected_ids(conn, paths, args.include_drafts)
-    g = graph.load_graph(paths, ids)
+    g = graph.load_graph(paths, config.vocabulary, ids)
     output = Path(args.output)
     output.write_text(g.serialize(format="turtle"), encoding="utf-8", newline="\n")
     print(f"{len(g)} triples from {len(ids)} spec(s) written to {output}")
@@ -235,9 +238,10 @@ def cmd_graph(args: argparse.Namespace) -> int:
 
 
 def cmd_query(args: argparse.Namespace) -> int:
-    paths, _config, conn = open_repo(args)
-    g = graph.load_graph(paths, _selected_ids(conn, paths, args.include_drafts))
-    rows = graph.run_query(g, args.sparql)
+    paths, config, conn = open_repo(args)
+    vocab = config.vocabulary
+    g = graph.load_graph(paths, vocab, _selected_ids(conn, paths, args.include_drafts))
+    rows = graph.run_query(g, vocab, args.sparql)
     print(f"{len(rows)} result(s)")
     for row in rows:
         print("   ", "  ".join(row))
@@ -245,23 +249,29 @@ def cmd_query(args: argparse.Namespace) -> int:
 
 
 def cmd_describe(args: argparse.Namespace) -> int:
-    paths, _config, _ = open_repo(args)
-    g = graph.load_graph(paths)
-    term = args.term if ":" in args.term else f"app:{args.term}"
+    paths, config, _ = open_repo(args)
+    vocab = config.vocabulary
+    g = graph.load_graph(paths, vocab)
+    term = args.term if ":" in args.term else f"{vocab.instance_prefix}:{args.term}"
     print(f"--- {term} as subject ---")
-    for row in graph.run_query(g, f"SELECT ?p ?o WHERE {{ {term} ?p ?o }}"):
+    for row in graph.run_query(g, vocab, f"SELECT ?p ?o WHERE {{ {term} ?p ?o }}"):
         print("   ", "  ".join(row))
     print(f"\n--- {term} as object ---")
-    for row in graph.run_query(g, f"SELECT ?s ?p WHERE {{ ?s ?p {term} }}"):
+    for row in graph.run_query(g, vocab, f"SELECT ?s ?p WHERE {{ ?s ?p {term} }}"):
         print("   ", "  ".join(row))
     return 0
 
 
 def cmd_ask(args: argparse.Namespace) -> int:
-    paths, _config, conn = open_repo(args)
-    g = graph.load_graph(paths, _selected_ids(conn, paths, args.include_drafts))
-    for title, sparql in graph.SANITY_QUERIES.items():
-        rows = graph.run_query(g, sparql)
+    paths, config, conn = open_repo(args)
+    vocab = config.vocabulary
+    presets = graph.surveys(config)
+    if not presets:
+        print("no `ask` presets configured — add [[ask]] tables to knowledge.toml")
+        return 0
+    g = graph.load_graph(paths, vocab, _selected_ids(conn, paths, args.include_drafts))
+    for title, sparql in presets:
+        rows = graph.run_query(g, vocab, sparql)
         print(f"\n{title} - {len(rows)} result(s)")
         for row in rows:
             print("   ", "  ".join(row))
@@ -269,27 +279,29 @@ def cmd_ask(args: argparse.Namespace) -> int:
 
 
 def cmd_contradictions(args: argparse.Namespace) -> int:
-    paths, _config, conn = open_repo(args)
+    paths, config, conn = open_repo(args)
+    vocab = config.vocabulary
     from knowledge import contradictions, lint
     ids = _selected_ids(conn, paths, args.include_drafts)
-    g = graph.load_graph(paths, ids)
+    g = graph.load_graph(paths, vocab, ids)
     found = False
 
-    conflicts = contradictions.functional_conflicts(g)
+    conflicts = contradictions.functional_conflicts(g, vocab)
     if conflicts:
         found = True
         print(f"{len(conflicts)} functional-property conflict(s):")
         for subject, prop, values in conflicts:
-            print(f"  - {subject} mon:{prop} has {len(values)} values: {', '.join(values)}")
+            print(f"  - {subject} {vocab.prefix}:{prop} has {len(values)} values:"
+                  f" {', '.join(values)}")
 
-    dangling = graph.dangling_terms(g)
+    dangling = graph.dangling_terms(g, vocab)
     if dangling:
         found = True
         print(f"\n{len(dangling)} term(s) referenced but never declared:")
         for term in dangling:
             print("  -", term)
 
-    redeclared = lint.locally_redeclared_concepts(paths, ids)
+    redeclared = lint.locally_redeclared_concepts(paths, vocab, ids)
     if redeclared:
         found = True
         print(f"\n{len(redeclared)} concept(s) redeclared locally instead of referenced:")
@@ -415,7 +427,7 @@ def cmd_stale(args: argparse.Namespace) -> int:
         else:
             print(f"\n{len(findings)} spec(s) would be demoted (pass --demote to apply)")
 
-    gaps = deps.uncheckable(conn, paths)
+    gaps = deps.uncheckable(conn, paths, config.vocabulary)
     if gaps:
         print(f"\n{len(gaps)} verified spec(s) have no dependencies and cannot be checked:")
         print("   ", ", ".join(gaps))
@@ -523,7 +535,7 @@ def cmd_dep(args: argparse.Namespace) -> int:
         db.save(conn, paths)
         print(f"{args.spec} no longer depends on {args.glob}")
     else:
-        derived = deps.derived_globs(paths, args.spec)
+        derived = deps.derived_globs(paths, config.vocabulary, args.spec)
         manual = deps.manual_globs(conn, args.spec)
         print(f"derived from the graph ({len(derived)}):")
         for glob in sorted(derived):
@@ -537,7 +549,7 @@ def cmd_dep(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="knowledge",
-        description="Author, track and publish the monicords knowledge base.",
+        description="Author, track and publish a project's knowledge base.",
     )
     parser.add_argument("--version", action="version", version=VERSION)
     parser.set_defaults(handler=None)
@@ -585,7 +597,7 @@ def build_parser() -> argparse.ArgumentParser:
     d_p.add_argument("term")
     d_p.set_defaults(handler=cmd_describe)
 
-    ask_p = sub.add_parser("ask", help="run the built-in sanity queries")
+    ask_p = sub.add_parser("ask", help="run the configured [[ask]] survey queries")
     ask_p.add_argument("--include-drafts", action="store_true")
     ask_p.set_defaults(handler=cmd_ask)
 

@@ -3,7 +3,7 @@ import subprocess
 import pytest
 
 from knowledge import db, deps, lifecycle, scan
-from tests.conftest import make_config, write_spec
+from tests.conftest import make_config
 
 
 def test_route_to_glob_ignores_route_groups():
@@ -41,19 +41,19 @@ def test_an_endpoint_glob_matches_a_route_handler_directly_beneath_it():
     assert deps.matches(globs, ["app/api/cron/route.ts"]) == ["app/api/cron/route.ts"]
 
 
-def test_derived_globs_come_from_the_specs_own_triples(repo):
-    assert deps.derived_globs(repo, "assets") == {"app/**/assets/page.tsx"}
-    assert deps.derived_globs(repo, "concepts") == set()
+def test_derived_globs_come_from_the_specs_own_triples(repo, config):
+    assert deps.derived_globs(repo, config.vocabulary, "assets") == {"app/**/assets/page.tsx"}
+    assert deps.derived_globs(repo, config.vocabulary, "concepts") == set()
 
 
-def test_manual_globs_are_added_to_derived_ones(repo):
+def test_manual_globs_are_added_to_derived_ones(repo, config):
     conn = db.connect(repo)
     scan.scan(conn, repo)
     conn.execute(
         "INSERT INTO spec_dependency (spec_id, glob, note)"
         " VALUES ('assets','modules/server/submodules/assets/**','the service layer')"
     )
-    assert deps.spec_globs(conn, repo, "assets") == {
+    assert deps.spec_globs(conn, repo, config.vocabulary, "assets") == {
         "app/**/assets/page.tsx",
         "modules/server/submodules/assets/**",
     }
@@ -187,16 +187,16 @@ def test_check_accepts_a_code_repo_override(repo, code_repo, tmp_path):
     assert findings == [("assets", ["app/platform/(menuLayout)/assets/page.tsx"])]
 
 
-def test_uncheckable_lists_a_verified_spec_with_no_dependencies(repo):
+def test_uncheckable_lists_a_verified_spec_with_no_dependencies(repo, config):
     conn = db.connect(repo)
     scan.scan(conn, repo)
     conn.execute("UPDATE spec SET status='verified' WHERE id IN ('assets','concepts')")
-    # assets has a derived glob from its mon:route; concepts has neither a route/endpoint
-    # nor a manual dependency, so only concepts is uncheckable.
-    assert deps.uncheckable(conn, repo) == ["concepts"]
+    # assets has a derived glob from its route; concepts has neither a route/endpoint nor a
+    # manual dependency, so only concepts is uncheckable.
+    assert deps.uncheckable(conn, repo, config.vocabulary) == ["concepts"]
 
 
-def test_uncheckable_excludes_a_spec_once_it_has_a_manual_glob(repo):
+def test_uncheckable_excludes_a_spec_once_it_has_a_manual_glob(repo, config):
     conn = db.connect(repo)
     scan.scan(conn, repo)
     conn.execute("UPDATE spec SET status='verified' WHERE id IN ('assets','concepts')")
@@ -204,4 +204,4 @@ def test_uncheckable_excludes_a_spec_once_it_has_a_manual_glob(repo):
         "INSERT INTO spec_dependency (spec_id, glob, note)"
         " VALUES ('concepts','prisma/schema.prisma','the data model')"
     )
-    assert deps.uncheckable(conn, repo) == []
+    assert deps.uncheckable(conn, repo, config.vocabulary) == []

@@ -33,7 +33,7 @@ def find_root(start: Path | None = None) -> Path:
     raise RuntimeError(f"no {MARKER} found in {current} or any parent directory")
 
 
-def get_paths(start: Path | None = None) -> Paths:
+def get_paths(start: Path | None = None, ontology_file: str = "ontology.ttl") -> Paths:
     root = find_root(start)
     ontology = root / "ontology"
     metadata = root / ".metadata"
@@ -41,7 +41,7 @@ def get_paths(start: Path | None = None) -> Paths:
         root=root,
         specs=root / "specs",
         ontology=ontology,
-        ontology_ttl=ontology / "monicords.ttl",
+        ontology_ttl=ontology / ontology_file,
         ontology_readme=ontology / "README.md",
         ontology_version=ontology / "VERSION",
         metadata=metadata,

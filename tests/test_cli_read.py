@@ -14,7 +14,7 @@ def seeded(repo, monkeypatch):
     )
     conn.execute(
         "INSERT INTO open_question (spec_id, claim_iri, question, asked_by, asked_at, status)"
-        " VALUES ('assets','https://monicords.com/id/Assets','Can an amount be negative?',"
+        " VALUES ('assets','https://example.test/id/Assets','Can an amount be negative?',"
         "'interviewer','2026-01-01T00:00:00Z','open')"
     )
     db.save(conn, repo)
@@ -129,7 +129,7 @@ def test_graph_writes_a_turtle_file(seeded, tmp_path, capsys):
     out = tmp_path / "g.ttl"
     args = run(["graph", "-o", str(out)])
     assert args.handler(args) == 0
-    assert "@prefix mon:" in out.read_text(encoding="utf-8")
+    assert "@prefix ex:" in out.read_text(encoding="utf-8")
     assert b"\r" not in out.read_bytes()
 
 
@@ -153,10 +153,9 @@ def test_contradictions_reports_none_on_a_clean_graph(seeded, capsys):
     assert "no mechanical contradictions found" in capsys.readouterr().out
 
 
-def test_contradictions_reports_a_functional_conflict(seeded, capsys):
-    from tests.conftest import write_spec
+def test_contradictions_reports_a_functional_conflict(seeded, write_spec, capsys):
     write_spec(seeded.root, "duplicate-route",
-               'app:Assets a mon:View ; mon:route "/somewhere-else" .\n')
+               'app:Assets a ex:View ; ex:route "/somewhere-else" .\n')
     args = run(["contradictions", "--include-drafts"])
     args.handler(args)
     assert "route" in capsys.readouterr().out

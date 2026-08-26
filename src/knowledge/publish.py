@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 from knowledge import gitcmd
-from knowledge.graph import wiki_page_name
+from knowledge.graph import page_name
 from knowledge.paths import Paths
 
 FRONTMATTER = re.compile(r"\A---\n.*?\n---\n\s*", re.S)
@@ -147,10 +147,10 @@ def write_pages(conn, paths: Paths, out_dir: Path) -> list[str]:
                 "meant to be gone."
             )
             continue
-        # scan() always populates wiki_page, so `page` here is always wiki_page_name(spec_id)
+        # scan() always populates wiki_page, so `page` here is always page_name(spec_id)
         # already and the `if` branch never fires today. It exists so a hand-set wiki_page
         # (page != spec_id) survives untransformed instead of being re-derived from the id.
-        name = f"{wiki_page_name(page) if page == spec_id else page}.md"
+        name = f"{page_name(page) if page == spec_id else page}.md"
         (out_dir / name).write_text(
             render_page(conn, paths, spec_id), encoding="utf-8", newline="\n"
         )

@@ -6,23 +6,23 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from rdflib import Graph, URIRef
+from rdflib import Graph
 
-from knowledge.graph import MON
+from knowledge.vocab import Vocabulary
 
-# Properties the ontology documents as single-valued, plus mon:defaultsTo and mon:route —
-# the design's own two examples of what this check looks for. "Functional by convention"
+# Properties the ontology documents as single-valued, plus defaultsTo and route — the
+# design's own two examples of what this check looks for. "Functional by convention"
 # because RDFS never enforces it (ontology/README.md, "Properties with literal values").
 FUNCTIONAL_PROPERTIES = ("route", "editable", "required", "viewport", "defaultsTo")
 
 
-def functional_conflicts(g: Graph) -> list[tuple[str, str, list[str]]]:
+def functional_conflicts(g: Graph, vocab: Vocabulary) -> list[tuple[str, str, list[str]]]:
     """(subject, property, sorted values) for every subject asserting more than one value
-    on a property that is supposed to hold at most one — two mon:route values on one view,
-    two mon:defaultsTo on one field."""
+    on a property that is supposed to hold at most one — two route values on one view, two
+    defaultsTo values on one field."""
     seen: dict[tuple[str, str], set[str]] = defaultdict(set)
     for prop in FUNCTIONAL_PROPERTIES:
-        for subject, obj in g.subject_objects(URIRef(MON + prop)):
+        for subject, obj in g.subject_objects(vocab.term(prop)):
             seen[(str(subject), prop)].add(str(obj))
     return sorted(
         (subject, prop, sorted(values))
