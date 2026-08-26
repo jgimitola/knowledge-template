@@ -1,1 +1,1 @@
-"""Authoring, tracking and publishing for a project's knowledge base."""
+"""Authoring, tracking and publishing for a knowledge base."""

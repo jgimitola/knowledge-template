@@ -97,6 +97,40 @@ def test_dep_remove_without_a_glob_returns_a_usage_message(working, capsys):
     assert "usage: knowledge dep remove" in out
 
 
+def test_dep_add_without_a_configured_code_repo_fails_clearly(repo, capsys, monkeypatch):
+    """`dep add` validates the glob against the code repository's tracked files, so unlike
+    `list`/`remove` it needs one configured. Guard it the same way `stale` is guarded rather
+    than letting the git call underneath run against a nonexistent path."""
+    monkeypatch.chdir(repo.root)
+    write_knowledge_toml(repo.root, code_repo="")
+    conn = db.connect(repo)
+    scan.scan(conn, repo)
+    db.save(conn, repo)
+
+    args = run(["dep", "add", "assets", "app/**/assets/page.tsx"])
+    assert args.handler(args) == 1
+    assert "no code repository configured" in capsys.readouterr().err
+
+    conn = db.connect(repo)
+    assert list(conn.execute(
+        "SELECT glob FROM spec_dependency WHERE spec_id='assets'"
+    )) == []
+
+
+def test_dep_list_works_without_a_configured_code_repo(repo, capsys, monkeypatch):
+    """`list` only reads the graph and the database — it must keep working even when
+    repo.code_repo is unset, unlike `add`."""
+    monkeypatch.chdir(repo.root)
+    write_knowledge_toml(repo.root, code_repo="")
+    conn = db.connect(repo)
+    scan.scan(conn, repo)
+    db.save(conn, repo)
+
+    args = run(["dep", "list", "assets"])
+    assert args.handler(args) == 0
+    assert "derived from the graph" in capsys.readouterr().out
+
+
 def test_stale_reports_verified_specs_with_no_dependencies(working, capsys):
     conn = db.connect(working)
     conn.execute(

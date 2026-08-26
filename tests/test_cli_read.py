@@ -178,3 +178,26 @@ def test_contradictions_reports_a_functional_conflict(seeded, write_spec, capsys
     args = run(["contradictions", "--include-drafts"])
     args.handler(args)
     assert "route" in capsys.readouterr().out
+
+
+def test_stale_without_a_configured_code_repo_fails_clearly(repo, capsys, monkeypatch):
+    from knowledge import cli
+    (repo.root / "knowledge.toml").write_text(
+        (repo.root / "knowledge.toml").read_text(encoding="utf-8").replace(
+            'code_repo = "../code"', 'code_repo = ""'
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(repo.root)
+    assert cli.main_argv(["stale"]) == 1
+    assert "no code repository configured" in capsys.readouterr().err
+
+
+def test_the_parser_description_names_no_project(capsys):
+    from knowledge import cli
+    text = cli.build_parser().format_help()
+    assert "monicords" not in text.lower()
+    # A description that only avoids the string "monicords" would still pass for any other
+    # project's name substituted in — pin the exact generic text so this test can actually
+    # fail for the reason it exists.
+    assert "Author, track and publish a knowledge base." in text

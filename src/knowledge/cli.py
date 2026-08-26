@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from knowledge import db, gitcmd, graph, scan
-from knowledge.config import Config, Sidebar, load_config
+from knowledge.config import Config, ConfigError, Sidebar, load_config
 from knowledge.paths import Paths, find_root, get_paths
 
 VERSION = "0.1.0"
@@ -420,6 +420,18 @@ def cmd_verify(args: argparse.Namespace) -> int:
 def cmd_stale(args: argparse.Namespace) -> int:
     paths, config, conn = open_repo(args)
     from knowledge import deps
+    # deps.check raises RuntimeError for the same condition, which main_argv would turn
+    # into an equivalent "error: ..." line — but that message is written for library
+    # callers, not this command's output. Guarding here means `stale` fails with its own
+    # clean, dedicated message before doing any of the git work, rather than borrowing
+    # deps.check's wording as a side effect of exception propagation.
+    if config.code_repo is None and not getattr(args, "code_repo", None):
+        print(
+            "no code repository configured — set repo.code_repo in knowledge.toml,"
+            " or pass --code-repo",
+            file=sys.stderr,
+        )
+        return 1
     override = Path(args.code_repo).resolve() if args.code_repo else None
     try:
         findings = deps.check(conn, paths, config, demote=args.demote, code_repo=override)
@@ -581,6 +593,19 @@ def cmd_dep(args: argparse.Namespace) -> int:
         print(f'usage: knowledge dep {args.action} <spec> "<glob>"')
         return 1
     if args.action == "add":
+        # Unlike `list`/`remove`, which only touch the database, `add` checks the new glob
+        # against the code repository's tracked files below — so it needs one configured.
+        # Without this guard a missing code_repo reached deps.tracked_files as None, which
+        # surfaced as a swallowed git error ("could not change to 'None'") reported as a
+        # mere warning after the dependency had already been inserted; fail clearly first,
+        # the same way `stale` does for the same condition.
+        if config.code_repo is None and not getattr(args, "code_repo", None):
+            print(
+                "no code repository configured — set repo.code_repo in knowledge.toml,"
+                " or pass --code-repo",
+                file=sys.stderr,
+            )
+            return 1
         if not list(conn.execute("SELECT 1 FROM spec WHERE id = ?", (args.spec,))):
             print(f"refused: no spec with id {args.spec!r}")
             return 1
@@ -620,7 +645,7 @@ def cmd_dep(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="knowledge",
-        description="Author, track and publish a project's knowledge base.",
+        description="Author, track and publish a knowledge base.",
     )
     parser.add_argument("--version", action="version", version=VERSION)
     parser.set_defaults(handler=None)
@@ -740,17 +765,23 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
+def main_argv(argv: Sequence[str] | None = None) -> int:
+    """The testable half of the entry point: drives the parser and handler from an explicit
+    argv instead of sys.argv, so tests can call it directly instead of shelling out."""
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.handler is None:
         parser.print_help()
         return 1
     try:
         return args.handler(args)
-    except RuntimeError as exc:
+    except (RuntimeError, ConfigError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+
+def main() -> int:
+    return main_argv()
 
 
 if __name__ == "__main__":
