@@ -1,49 +1,68 @@
 import subprocess
+from dataclasses import replace
 
 import pytest
 
 from knowledge import db, deps, lifecycle, scan
+from knowledge.config import Dependencies
 from tests.conftest import make_config
 
+NEXTJS = Dependencies(
+    route_property="route",
+    endpoint_property="endpoint",
+    route_glob="app/**/{segments}/page.tsx",
+    endpoint_glob="app/{path}/**/route.ts",
+    absorbed_prefixes=("platform",),
+)
 
-def test_route_to_glob_ignores_route_groups():
-    # /platform/assets lives at app/platform/(menuLayout)/assets/page.tsx
-    assert deps.route_to_glob("/platform/assets") == "app/**/assets/page.tsx"
-    assert deps.route_to_glob("/landing") == "app/**/landing/page.tsx"
-    assert deps.route_to_glob("/platform/expenses/calendar") == (
-        "app/**/expenses/calendar/page.tsx"
+
+def test_route_glob_absorbs_the_configured_prefix():
+    assert deps.route_to_glob("/platform/assets", NEXTJS) == "app/**/assets/page.tsx"
+
+
+def test_route_glob_replaces_dynamic_segments():
+    assert (
+        deps.route_to_glob("/platform/incomes/{incomeSourceId}", NEXTJS)
+        == "app/**/incomes/*/page.tsx"
     )
 
 
-def test_route_to_glob_handles_a_dynamic_segment():
-    # A dynamic segment becomes *, not [*] — [*] is a character class matching one literal
-    # asterisk, while the real directory is named [incomeSourceId].
-    assert deps.route_to_glob("/platform/incomes/{incomeSourceId}") == (
-        "app/**/incomes/*/page.tsx"
+def test_route_glob_leaves_unabsorbed_prefixes_alone():
+    assert deps.route_to_glob("/settings/profile", NEXTJS) == "app/**/settings/profile/page.tsx"
+
+
+def test_endpoint_glob_tolerates_a_leading_method():
+    assert deps.endpoint_to_glob("GET /api/cron", NEXTJS) == "app/api/cron/**/route.ts"
+
+
+def test_a_different_framework_needs_no_code_change():
+    django = Dependencies(
+        route_property="route",
+        route_glob="apps/**/{segments}/views.py",
+        dynamic_segment="<...>",
     )
+    assert deps.route_to_glob("/reports/<year>", django) == "apps/**/reports/*/views.py"
+
+
+def test_derived_globs_are_empty_when_nothing_is_configured(repo, config):
+    plain = replace(config, dependencies=Dependencies())
+    assert deps.derived_globs(repo, plain, "assets") == set()
 
 
 def test_a_dynamic_glob_matches_a_real_nextjs_directory():
-    globs = {deps.route_to_glob("/platform/incomes/{incomeSourceId}")}
+    globs = {deps.route_to_glob("/platform/incomes/{incomeSourceId}", NEXTJS)}
     changed = ["app/platform/(menuLayout)/incomes/[incomeSourceId]/page.tsx"]
     assert deps.matches(globs, changed) == changed
 
 
-def test_endpoint_to_glob():
-    assert deps.endpoint_to_glob("/api/cron") == "app/api/cron/**/route.ts"
-    assert deps.endpoint_to_glob("/api/loans-out/summary") == (
-        "app/api/loans-out/summary/**/route.ts"
-    )
-
-
 def test_an_endpoint_glob_matches_a_route_handler_directly_beneath_it():
-    globs = {deps.endpoint_to_glob("/api/cron")}
+    globs = {deps.endpoint_to_glob("/api/cron", NEXTJS)}
     assert deps.matches(globs, ["app/api/cron/route.ts"]) == ["app/api/cron/route.ts"]
 
 
 def test_derived_globs_come_from_the_specs_own_triples(repo, config):
-    assert deps.derived_globs(repo, config.vocabulary, "assets") == {"app/**/assets/page.tsx"}
-    assert deps.derived_globs(repo, config.vocabulary, "concepts") == set()
+    assert deps.derived_globs(repo, config, "assets") == {"app/**/assets/page.tsx"}
+    assert deps.derived_globs(repo, config, "concepts") == set()
 
 
 def test_manual_globs_are_added_to_derived_ones(repo, config):
@@ -53,7 +72,7 @@ def test_manual_globs_are_added_to_derived_ones(repo, config):
         "INSERT INTO spec_dependency (spec_id, glob, note)"
         " VALUES ('assets','modules/server/submodules/assets/**','the service layer')"
     )
-    assert deps.spec_globs(conn, repo, config.vocabulary, "assets") == {
+    assert deps.spec_globs(conn, repo, config, "assets") == {
         "app/**/assets/page.tsx",
         "modules/server/submodules/assets/**",
     }
@@ -90,7 +109,7 @@ def code_repo(tmp_path):
 def test_check_demotes_a_spec_whose_dependency_changed(repo, code_repo):
     conn = db.connect(repo)
     scan.scan(conn, repo)
-    config = make_config(code_repo, remote="x")
+    config = replace(make_config(code_repo, remote="x"), dependencies=NEXTJS)
     base = lifecycle.head_commit(code_repo)
 
     lifecycle.mark_modeled(conn, repo, "assets", by="writer", ontology_version="1.0.0")
@@ -109,7 +128,7 @@ def test_check_demotes_a_spec_whose_dependency_changed(repo, code_repo):
 def test_check_ignores_an_unrelated_change(repo, code_repo):
     conn = db.connect(repo)
     scan.scan(conn, repo)
-    config = make_config(code_repo, remote="x")
+    config = replace(make_config(code_repo, remote="x"), dependencies=NEXTJS)
     base = lifecycle.head_commit(code_repo)
 
     lifecycle.mark_modeled(conn, repo, "assets", by="writer", ontology_version="1.0.0")
@@ -126,7 +145,7 @@ def test_check_ignores_an_unrelated_change(repo, code_repo):
 def test_check_only_looks_at_verified_specs(repo, code_repo):
     conn = db.connect(repo)
     scan.scan(conn, repo)
-    config = make_config(code_repo, remote="x")
+    config = replace(make_config(code_repo, remote="x"), dependencies=NEXTJS)
     # assets is left as a draft; nothing to demote regardless of what changed.
     assert deps.check(conn, repo, config, demote=True) == []
 
@@ -137,7 +156,7 @@ def test_check_demotes_a_spec_whose_dependency_was_renamed(repo, code_repo):
     match nothing and the spec would never be flagged."""
     conn = db.connect(repo)
     scan.scan(conn, repo)
-    config = make_config(code_repo, remote="x")
+    config = replace(make_config(code_repo, remote="x"), dependencies=NEXTJS)
 
     conn.execute(
         "INSERT INTO spec_dependency (spec_id, glob, note)"
@@ -172,7 +191,7 @@ def test_check_accepts_a_code_repo_override(repo, code_repo, tmp_path):
     conn = db.connect(repo)
     scan.scan(conn, repo)
     # A config pointing somewhere that does not exist, to prove the override is what is used.
-    config = make_config(tmp_path / "nonexistent", remote="x")
+    config = replace(make_config(tmp_path / "nonexistent", remote="x"), dependencies=NEXTJS)
     base = lifecycle.head_commit(code_repo)
 
     lifecycle.mark_modeled(conn, repo, "assets", by="writer", ontology_version="1.0.0")
@@ -187,13 +206,24 @@ def test_check_accepts_a_code_repo_override(repo, code_repo, tmp_path):
     assert findings == [("assets", ["app/platform/(menuLayout)/assets/page.tsx"])]
 
 
+def test_check_refuses_when_no_code_repository_is_configured(repo, config):
+    """config.code_repo is Optional; without this guard a spec that was never compared
+    against any code repository would silently report zero findings, indistinguishable
+    from a spec that was actually checked and found clean."""
+    conn = db.connect(repo)
+    scan.scan(conn, repo)
+    no_repo = replace(config, code_repo=None)
+    with pytest.raises(RuntimeError, match="no code repository configured"):
+        deps.check(conn, repo, no_repo, demote=False)
+
+
 def test_uncheckable_lists_a_verified_spec_with_no_dependencies(repo, config):
     conn = db.connect(repo)
     scan.scan(conn, repo)
     conn.execute("UPDATE spec SET status='verified' WHERE id IN ('assets','concepts')")
     # assets has a derived glob from its route; concepts has neither a route/endpoint nor a
     # manual dependency, so only concepts is uncheckable.
-    assert deps.uncheckable(conn, repo, config.vocabulary) == ["concepts"]
+    assert deps.uncheckable(conn, repo, config) == ["concepts"]
 
 
 def test_uncheckable_excludes_a_spec_once_it_has_a_manual_glob(repo, config):
@@ -204,4 +234,4 @@ def test_uncheckable_excludes_a_spec_once_it_has_a_manual_glob(repo, config):
         "INSERT INTO spec_dependency (spec_id, glob, note)"
         " VALUES ('concepts','prisma/schema.prisma','the data model')"
     )
-    assert deps.uncheckable(conn, repo, config.vocabulary) == []
+    assert deps.uncheckable(conn, repo, config) == []

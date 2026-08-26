@@ -1,0 +1,15 @@
+# Copy this into your knowledge.toml to derive file globs from routes and endpoints in a
+# Next.js App Router project. It is data, not something the tooling reads from here.
+#
+# `platform` is absorbed because /platform/assets lives at
+# app/platform/(menuLayout)/assets/page.tsx: the route group sits between `platform` and the
+# module, so the segment is dropped and the ** covers both it and the group.
+# A dynamic segment like {incomeSourceId} becomes *, matching [incomeSourceId] on disk.
+[dependencies]
+route_property      = "route"
+endpoint_property   = "endpoint"
+route_glob          = "app/**/{segments}/page.tsx"
+endpoint_glob       = "app/{path}/**/route.ts"
+absorbed_prefixes   = ["platform"]
+dynamic_segment     = "{...}"
+dynamic_replacement = "*"

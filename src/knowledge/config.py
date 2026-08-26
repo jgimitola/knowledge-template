@@ -41,7 +41,9 @@ class Dependencies:
     @property
     def derives(self) -> bool:
         """Whether any glob can be derived from the graph at all. False leaves manual
-        globs as the only dependency source, which is the shipped default."""
+        globs as the only dependency source — the shipped default, because a project that
+        has not told this tool how its routes map to files should get no globs rather
+        than a guessed pattern that silently matches the wrong thing, or nothing."""
         return bool(self.route_property and self.route_glob) or bool(
             self.endpoint_property and self.endpoint_glob
         )

@@ -448,7 +448,7 @@ def cmd_stale(args: argparse.Namespace) -> int:
         else:
             print(f"\n{len(findings)} spec(s) would be demoted (pass --demote to apply)")
 
-    gaps = deps.uncheckable(conn, paths, config.vocabulary)
+    gaps = deps.uncheckable(conn, paths, config)
     if gaps:
         print(f"\n{len(gaps)} verified spec(s) have no dependencies and cannot be checked:")
         print("   ", ", ".join(gaps))
@@ -556,7 +556,7 @@ def cmd_dep(args: argparse.Namespace) -> int:
         db.save(conn, paths)
         print(f"{args.spec} no longer depends on {args.glob}")
     else:
-        derived = deps.derived_globs(paths, config.vocabulary, args.spec)
+        derived = deps.derived_globs(paths, config, args.spec)
         manual = deps.manual_globs(conn, args.spec)
         print(f"derived from the graph ({len(derived)}):")
         for glob in sorted(derived):
