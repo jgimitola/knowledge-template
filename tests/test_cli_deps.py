@@ -4,6 +4,7 @@ import pytest
 
 from knowledge import cli, db, lifecycle, scan
 from knowledge.config import load_config
+from tests.conftest import write_knowledge_toml
 
 
 def _init_code_repo(root):
@@ -24,10 +25,7 @@ def working(repo, monkeypatch):
     sibling of tmp_path that would collide with every other test sharing the same pytest
     basetemp. Point it at a real git repo living inside tmp_path instead."""
     monkeypatch.chdir(repo.root)
-    (repo.root / "knowledge.toml").write_text(
-        '[repo]\ncode_repo = "code"\n\n[wiki]\nremote = "https://example.com/x.wiki.git"\n',
-        encoding="utf-8",
-    )
+    write_knowledge_toml(repo.root, code_repo="code")
     _init_code_repo(repo.root / "code")
     conn = db.connect(repo)
     scan.scan(conn, repo)

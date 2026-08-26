@@ -1,7 +1,7 @@
 import pytest
 
 from knowledge import db, lifecycle, scan
-from knowledge.config import Config
+from tests.conftest import make_config
 
 
 @pytest.fixture
@@ -13,7 +13,7 @@ def seeded(repo):
 
 @pytest.fixture
 def config(tmp_path):
-    return Config(code_repo=tmp_path / "code", wiki_remote="https://example.com/x.wiki.git")
+    return make_config(tmp_path / "code")
 
 
 def test_verify_refuses_an_unmodeled_spec(seeded, config):

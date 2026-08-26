@@ -3,8 +3,7 @@ import subprocess
 import pytest
 
 from knowledge import db, deps, lifecycle, scan
-from knowledge.config import Config
-from tests.conftest import write_spec
+from tests.conftest import make_config, write_spec
 
 
 def test_route_to_glob_ignores_route_groups():
@@ -91,7 +90,7 @@ def code_repo(tmp_path):
 def test_check_demotes_a_spec_whose_dependency_changed(repo, code_repo):
     conn = db.connect(repo)
     scan.scan(conn, repo)
-    config = Config(code_repo=code_repo, wiki_remote="x")
+    config = make_config(code_repo, remote="x")
     base = lifecycle.head_commit(code_repo)
 
     lifecycle.mark_modeled(conn, repo, "assets", by="writer", ontology_version="1.0.0")
@@ -110,7 +109,7 @@ def test_check_demotes_a_spec_whose_dependency_changed(repo, code_repo):
 def test_check_ignores_an_unrelated_change(repo, code_repo):
     conn = db.connect(repo)
     scan.scan(conn, repo)
-    config = Config(code_repo=code_repo, wiki_remote="x")
+    config = make_config(code_repo, remote="x")
     base = lifecycle.head_commit(code_repo)
 
     lifecycle.mark_modeled(conn, repo, "assets", by="writer", ontology_version="1.0.0")
@@ -127,7 +126,7 @@ def test_check_ignores_an_unrelated_change(repo, code_repo):
 def test_check_only_looks_at_verified_specs(repo, code_repo):
     conn = db.connect(repo)
     scan.scan(conn, repo)
-    config = Config(code_repo=code_repo, wiki_remote="x")
+    config = make_config(code_repo, remote="x")
     # assets is left as a draft; nothing to demote regardless of what changed.
     assert deps.check(conn, repo, config, demote=True) == []
 
@@ -138,7 +137,7 @@ def test_check_demotes_a_spec_whose_dependency_was_renamed(repo, code_repo):
     match nothing and the spec would never be flagged."""
     conn = db.connect(repo)
     scan.scan(conn, repo)
-    config = Config(code_repo=code_repo, wiki_remote="x")
+    config = make_config(code_repo, remote="x")
 
     conn.execute(
         "INSERT INTO spec_dependency (spec_id, glob, note)"
@@ -173,7 +172,7 @@ def test_check_accepts_a_code_repo_override(repo, code_repo, tmp_path):
     conn = db.connect(repo)
     scan.scan(conn, repo)
     # A config pointing somewhere that does not exist, to prove the override is what is used.
-    config = Config(code_repo=tmp_path / "nonexistent", wiki_remote="x")
+    config = make_config(tmp_path / "nonexistent", remote="x")
     base = lifecycle.head_commit(code_repo)
 
     lifecycle.mark_modeled(conn, repo, "assets", by="writer", ontology_version="1.0.0")

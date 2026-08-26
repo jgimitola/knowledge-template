@@ -14,15 +14,15 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from knowledge import db, gitcmd, graph, scan
-from knowledge.config import load_config
+from knowledge.config import Config, load_config
 from knowledge.paths import Paths, get_paths
 
 VERSION = "0.1.0"
 
 
-def open_repo(_args: argparse.Namespace) -> tuple[Paths, sqlite3.Connection]:
+def open_repo(_args: argparse.Namespace) -> tuple[Paths, Config, sqlite3.Connection]:
     paths = get_paths()
-    return paths, db.connect(paths)
+    return paths, load_config(paths.root), db.connect(paths)
 
 
 def _rows(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> list[tuple]:
@@ -45,7 +45,7 @@ def _print_table(headers: list[str], rows: list[tuple]) -> None:
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, _config, conn = open_repo(args)
     report = scan.scan(conn, paths)
     print(f"added {len(report.added)}, moved {len(report.moved)}, "
           f"unchanged {len(report.unchanged)}, missing {len(report.missing)}, "
@@ -62,7 +62,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, _config, conn = open_repo(args)
     where: list[str] = []
     params: list[str] = []
     if args.status:
@@ -105,7 +105,7 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_show(args: argparse.Namespace) -> int:
-    _, conn = open_repo(args)
+    _, _config, conn = open_repo(args)
     rows = _rows(conn, "SELECT * FROM spec WHERE id = ?", (args.id,))
     if not rows:
         print(f"no spec with id {args.id!r}")
@@ -139,7 +139,7 @@ def cmd_show(args: argparse.Namespace) -> int:
 
 
 def cmd_questions(args: argparse.Namespace) -> int:
-    _, conn = open_repo(args)
+    _, _config, conn = open_repo(args)
     where: list[str] = []
     params: list[str] = []
     if args.spec:
@@ -186,7 +186,7 @@ def _check(name: str, items: Sequence[str], ok_message: str, strict: bool) -> bo
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    paths, _ = open_repo(args)
+    paths, _config, _ = open_repo(args)
     from knowledge import lint
     ids = graph.spec_ids(paths)
     print(f"{len(ids)} spec(s)")
@@ -225,7 +225,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_graph(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, _config, conn = open_repo(args)
     ids = _selected_ids(conn, paths, args.include_drafts)
     g = graph.load_graph(paths, ids)
     output = Path(args.output)
@@ -235,7 +235,7 @@ def cmd_graph(args: argparse.Namespace) -> int:
 
 
 def cmd_query(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, _config, conn = open_repo(args)
     g = graph.load_graph(paths, _selected_ids(conn, paths, args.include_drafts))
     rows = graph.run_query(g, args.sparql)
     print(f"{len(rows)} result(s)")
@@ -245,7 +245,7 @@ def cmd_query(args: argparse.Namespace) -> int:
 
 
 def cmd_describe(args: argparse.Namespace) -> int:
-    paths, _ = open_repo(args)
+    paths, _config, _ = open_repo(args)
     g = graph.load_graph(paths)
     term = args.term if ":" in args.term else f"app:{args.term}"
     print(f"--- {term} as subject ---")
@@ -258,7 +258,7 @@ def cmd_describe(args: argparse.Namespace) -> int:
 
 
 def cmd_ask(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, _config, conn = open_repo(args)
     g = graph.load_graph(paths, _selected_ids(conn, paths, args.include_drafts))
     for title, sparql in graph.SANITY_QUERIES.items():
         rows = graph.run_query(g, sparql)
@@ -269,7 +269,7 @@ def cmd_ask(args: argparse.Namespace) -> int:
 
 
 def cmd_contradictions(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, _config, conn = open_repo(args)
     from knowledge import contradictions, lint
     ids = _selected_ids(conn, paths, args.include_drafts)
     g = graph.load_graph(paths, ids)
@@ -302,7 +302,7 @@ def cmd_contradictions(args: argparse.Namespace) -> int:
 
 
 def cmd_new(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, _config, conn = open_repo(args)
     from knowledge import lifecycle
     md = lifecycle.new_spec(paths, args.id, args.title or args.id.replace("-", " ").title())
     scan.scan(conn, paths)
@@ -311,7 +311,7 @@ def cmd_new(args: argparse.Namespace) -> int:
 
 
 def cmd_model(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, _config, conn = open_repo(args)
     from knowledge import lifecycle
     version = paths.ontology_version.read_text(encoding="utf-8").strip()
     try:
@@ -325,7 +325,7 @@ def cmd_model(args: argparse.Namespace) -> int:
 
 
 def cmd_forget(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, _config, conn = open_repo(args)
     from knowledge import lifecycle
     try:
         lifecycle.forget(conn, paths, args.id, args.by)
@@ -338,7 +338,7 @@ def cmd_forget(args: argparse.Namespace) -> int:
 
 
 def cmd_ask_question(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, _config, conn = open_repo(args)
     from knowledge import lifecycle
     if not list(conn.execute("SELECT 1 FROM spec WHERE id = ?", (args.spec,))):
         print(f"refused: no spec with id {args.spec!r}")
@@ -350,7 +350,7 @@ def cmd_ask_question(args: argparse.Namespace) -> int:
 
 
 def cmd_answer(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, _config, conn = open_repo(args)
     from knowledge import lifecycle
     lifecycle.answer_question(conn, args.question_id, args.answer, args.by)
     db.save(conn, paths)
@@ -359,9 +359,8 @@ def cmd_answer(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, config, conn = open_repo(args)
     from knowledge import lifecycle
-    config = load_config(paths.root)
     try:
         prune = [(int(qid), reason) for qid, reason in (args.prune or [])]
     except ValueError:
@@ -386,9 +385,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 
 def cmd_stale(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, config, conn = open_repo(args)
     from knowledge import deps
-    config = load_config(paths.root)
     override = Path(args.code_repo).resolve() if args.code_repo else None
     try:
         findings = deps.check(conn, paths, config, demote=args.demote, code_repo=override)
@@ -443,9 +441,8 @@ def cmd_publish(args: argparse.Namespace) -> int:
     import shutil
     import tempfile
 
-    paths, conn = open_repo(args)
+    paths, config, conn = open_repo(args)
     from knowledge import publish
-    config = load_config(paths.root)
 
     if args.dry_run:
         out = Path(args.output) if args.output else paths.root / "build" / "wiki"
@@ -465,7 +462,7 @@ def cmd_publish(args: argparse.Namespace) -> int:
         clone = workdir / "wiki"
         try:
             gitcmd.run(
-                ["clone", config.wiki_remote, str(clone)],
+                ["clone", config.publish.remote, str(clone)],
                 check=True, capture_output=True, text=True,
             )
         except subprocess.CalledProcessError as exc:
@@ -482,7 +479,7 @@ def cmd_publish(args: argparse.Namespace) -> int:
         written = publish.write_pages(conn, paths, clone)
         try:
             pushed = publish.push(
-                clone, config.wiki_remote, f"docs: sync {len(written)} page(s)"
+                clone, config.publish.remote, f"docs: sync {len(written)} page(s)"
             )
         except subprocess.CalledProcessError as exc:
             print("error: could not push to the wiki repository")
@@ -495,7 +492,7 @@ def cmd_publish(args: argparse.Namespace) -> int:
 
 
 def cmd_dep(args: argparse.Namespace) -> int:
-    paths, conn = open_repo(args)
+    paths, config, conn = open_repo(args)
     from knowledge import deps
     if args.action in ("add", "remove") and not args.glob:
         print(f'usage: knowledge dep {args.action} <spec> "<glob>"')
@@ -511,7 +508,6 @@ def cmd_dep(args: argparse.Namespace) -> int:
         db.record_event(conn, args.spec, "dependency_added", "cli", args.glob)
         db.save(conn, paths)
         print(f"{args.spec} now depends on {args.glob}")
-        config = load_config(paths.root)
         try:
             tracked = deps.tracked_files(config.code_repo)
         except subprocess.CalledProcessError as exc:

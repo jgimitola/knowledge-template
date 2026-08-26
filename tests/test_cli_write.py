@@ -1,6 +1,7 @@
 import pytest
 
 from knowledge import cli, db, lifecycle, scan
+from tests.conftest import write_knowledge_toml
 
 
 @pytest.fixture
@@ -217,10 +218,7 @@ def test_verify_with_no_code_repository_refuses_cleanly(working, capsys):
     lifecycle.mark_modeled(conn, working, "assets", by="writer", ontology_version="1.0.0")
     db.save(conn, working)
 
-    (working.root / "knowledge.toml").write_text(
-        '[repo]\ncode_repo = "does-not-exist"\n\n[wiki]\nremote = "https://example.com/x.wiki.git"\n',
-        encoding="utf-8",
-    )
+    write_knowledge_toml(working.root, code_repo="does-not-exist")
 
     args = run(["verify", "assets", "--by", "jesus"])
     assert args.handler(args) == 1

@@ -4,6 +4,8 @@ import pytest
 
 from knowledge import gitcmd
 from knowledge import paths as paths_mod
+from knowledge.config import Config, Dependencies, Publish
+from knowledge.vocab import Checks, Vocabulary
 
 
 @pytest.fixture(autouse=True)
@@ -92,13 +94,61 @@ def write_spec(root, spec_id, ttl, prose="Some prose.\n"):
     return directory
 
 
+# knowledge.toml now requires a full [vocabulary] table (Task 2). These stay the monicords
+# namespaces on purpose — graph.py still has MON as a module constant at this point, so a
+# fixture using different namespaces would break every test that parses ONTOLOGY/ASSETS_TTL
+# above. Task 3 rewrites the fixture and the constant together.
+KNOWLEDGE_TOML = """\
+[project]
+name = "Monicords"
+
+[vocabulary]
+ontology_file = "monicords.ttl"
+namespace = "https://monicords.com/ontology#"
+instances = "https://monicords.com/id/"
+prefix = "mon"
+instance_prefix = "app"
+
+[repo]
+code_repo = "{code_repo}"
+
+[publish]
+remote = "{remote}"
+"""
+
+
+def write_knowledge_toml(root, *, code_repo="../code", remote="https://example.com/x.wiki.git"):
+    (root / "knowledge.toml").write_text(
+        KNOWLEDGE_TOML.format(code_repo=code_repo, remote=remote), encoding="utf-8"
+    )
+    return root
+
+
+def make_config(code_repo, remote="https://example.com/x.wiki.git"):
+    """A Config for tests that exercise lifecycle/deps functions directly, without going
+    through load_config. Same monicords vocabulary as KNOWLEDGE_TOML above."""
+    return Config(
+        project_name="Monicords",
+        vocabulary=Vocabulary(
+            ontology_file="monicords.ttl",
+            namespace="https://monicords.com/ontology#",
+            instances="https://monicords.com/id/",
+            prefix="mon",
+            instance_prefix="app",
+            checks=Checks(),
+        ),
+        surveys=(),
+        code_repo=code_repo,
+        dependencies=Dependencies(),
+        publish=Publish(remote=remote),
+        unconfigured=False,
+    )
+
+
 @pytest.fixture
 def repo(tmp_path):
     """A knowledge repository with an ontology and two specs."""
-    (tmp_path / "knowledge.toml").write_text(
-        '[repo]\ncode_repo = "../code"\n\n[wiki]\nremote = "https://example.com/x.wiki.git"\n',
-        encoding="utf-8",
-    )
+    write_knowledge_toml(tmp_path)
     ontology = tmp_path / "ontology"
     ontology.mkdir()
     (ontology / "monicords.ttl").write_text(ONTOLOGY, encoding="utf-8")

@@ -1,6 +1,7 @@
 import pytest
 
 from knowledge import cli, db, scan
+from tests.conftest import write_knowledge_toml
 
 
 @pytest.fixture
@@ -22,12 +23,7 @@ def test_publish_reports_a_clone_failure_cleanly_instead_of_a_traceback(working,
     cmd_publish must catch CalledProcessError itself rather than let it escape as a
     traceback — main() only catches RuntimeError."""
     bogus_remote = working.root / "no-such-wiki"
-    (working.root / "knowledge.toml").write_text(
-        '[repo]\ncode_repo = "../code"\n\n[wiki]\nremote = "'
-        + bogus_remote.as_posix()
-        + '"\n',
-        encoding="utf-8",
-    )
+    write_knowledge_toml(working.root, remote=bogus_remote.as_posix())
 
     args = run(["publish"])
     exit_code = args.handler(args)

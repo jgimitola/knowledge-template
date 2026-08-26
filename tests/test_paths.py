@@ -1,7 +1,6 @@
 import pytest
 
 from knowledge import paths
-from knowledge.config import load_config
 
 
 def make_repo(tmp_path):
@@ -33,10 +32,3 @@ def test_paths_are_derived_from_the_root(tmp_path):
     assert p.dump == root / ".metadata" / "dump.sql"
     assert paths.spec_md(p, "assets") == root / "specs" / "assets" / "spec.md"
     assert paths.spec_ttl(p, "assets") == root / "specs" / "assets" / "spec.ttl"
-
-
-def test_config_resolves_the_code_repo_relative_to_the_root(tmp_path):
-    root = make_repo(tmp_path)
-    cfg = load_config(root)
-    assert cfg.code_repo == (root / ".." / "monicords_app").resolve()
-    assert cfg.wiki_remote == "https://example.com/x.wiki.git"

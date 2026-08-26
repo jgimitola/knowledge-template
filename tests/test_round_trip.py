@@ -7,7 +7,7 @@ resolve.
 from __future__ import annotations
 
 from knowledge import db, graph, lifecycle, lint, scan
-from knowledge.config import Config
+from tests.conftest import make_config
 
 FIXTURE_TTL = """\
 app:Budgets a mon:Module ;
@@ -46,7 +46,7 @@ def test_a_spec_can_be_scaffolded_modeled_and_verified(repo):
     assert lint.restated_rule_comments(g) == []
     assert lint.naming_violations(g) == []
 
-    config = Config(code_repo=repo.root, wiki_remote="https://example.com/x.wiki.git")
+    config = make_config(repo.root)
     lifecycle.verify(conn, repo, config, "budgets", by="jesus", prune=[], commit="abc123")
 
     row = list(conn.execute(

@@ -1,5 +1,56 @@
-[repo]
-code_repo = ""
+# Written by `knowledge init`. Remove the [template] table to unlock a re-run.
+[template]
+unconfigured = true
 
-[wiki]
-remote = ""
+[project]
+name = "{{PROJECT_NAME}}"
+
+[vocabulary]
+ontology_file   = "ontology.ttl"
+namespace       = "{{BASE_IRI}}ontology#"
+instances       = "{{BASE_IRI}}id/"
+prefix          = "{{PREFIX}}"
+instance_prefix = "app"
+
+# Terms the mechanical checks need to know about. An empty value disables its check,
+# and `validate` reports it as skipped rather than passed.
+rule_class                 = "Rule"
+concept_class              = ""
+concept_spec               = "concepts"
+field_class                = ""
+field_name_pattern         = ""
+underscore_reserved        = false
+functional_properties      = []
+verbatim_string_properties = []
+
+# The `ask` presets. Each becomes one named survey.
+[[ask]]
+name  = "everything with a label"
+query = "SELECT ?s ?l WHERE { ?s rdfs:label ?l } ORDER BY ?l"
+
+[repo]
+code_repo = "{{CODE_REPO}}"     # empty disables `stale` and `dep`
+
+[dependencies]
+route_property      = ""
+endpoint_property   = ""
+route_glob          = ""
+endpoint_glob       = ""
+absorbed_prefixes   = []
+dynamic_segment     = "{...}"
+dynamic_replacement = "*"
+
+[publish]
+target  = "none"                # "none" | "directory" | "github-wiki"
+remote  = ""
+out_dir = ""
+committer_name  = "github-actions[bot]"
+committer_email = "41898282+github-actions[bot]@users.noreply.github.com"
+
+[publish.sidebar]
+title         = "{{PROJECT_NAME}}"
+order         = []              # anything unlisted is appended alphabetically
+reference     = []
+nested_under  = {}
+header_before = {}
+labels        = {}
